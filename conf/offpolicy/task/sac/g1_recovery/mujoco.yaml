@@ -1,0 +1,53 @@
+# @package _global_
+# Unassisted task baseline. Reward weights are starting values, not validated policy quality.
+training:
+  task_name: G1Recovery
+  sim_backend: mujoco
+interactive:
+  action_mode: policy
+  keyboard: false
+algo:
+  num_envs: 128
+  max_iterations: 5000
+  save_interval: 500
+  use_symmetry: false
+env:
+  max_episode_seconds: 10.0
+  control_config:
+    action_scale: 1.0
+  commands:
+    vel_limit: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
+    observe_height_command: true
+    random_height_during_walking: false
+    height_range: [0.754, 0.754]
+    default_height: 0.754
+  curriculum:
+    enabled: false
+  assistance:
+    force_fractions: [0.4, 0.2, 0.0]
+    stage: 2
+    body_name: torso_link
+    start_after_seconds: 0.6
+    min_upright_cos: 0.8
+    evaluation: ${training.play_only}
+  recovery:
+    reset_base_height: 0.30
+    reset_joint_noise: 0.05
+    stable_seconds: 1.0
+reward:
+  tracking_sigma: 0.25
+  gait_frequency: 0.0
+  feet_phase_swing_height: 0.0
+  feet_phase_tracking_sigma: 0.04
+  # Required shared config fields; recovery uses its own termination limits.
+  min_base_height: 0.0
+  max_tilt_deg: 180.0
+  base_height_target: 0.754
+  scales:
+    recovery_progress: 5.0
+    recovery_upright: 1.0
+    recovery_stability: 2.0
+    recovery_stand_height: 2.0
+    recovery_stand_motion: 1.0
+    recovery_action_rate: -0.02
+    recovery_joint_speed: -0.001

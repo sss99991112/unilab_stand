@@ -139,12 +139,19 @@ def resolve_play_actor_spec(
     return actor_algo_type, actor_kwargs
 
 
-def build_offpolicy_env_cfg_override(algo_name: str, cfg: DictConfig) -> dict[str, Any] | None:
+def build_offpolicy_env_cfg_override(
+    algo_name: str,
+    cfg: DictConfig,
+    *,
+    for_play: bool = False,
+) -> dict[str, Any] | None:
     assert_offpolicy_task_choice_matches_algo(cfg, algo_name=algo_name)
-    return cast(
-        dict[str, Any] | None,
-        BackendAdapter(cfg, root_dir=ROOT_DIR, algo_name=algo_name).build_task_env_cfg_override(),
-    )
+    overrides = BackendAdapter(
+        cfg, root_dir=ROOT_DIR, algo_name=algo_name
+    ).build_task_env_cfg_override()
+    if for_play and str(cfg.training.task_name) == "G1Recovery":
+        overrides.setdefault("assistance", {})["evaluation"] = True
+    return overrides
 
 
 def apply_configured_actor_warm_start(
@@ -167,7 +174,11 @@ def apply_configured_actor_warm_start(
 
     if algo_name != "sac":
         raise ValueError("actor-only G1 height warm start currently supports only SAC")
-    if str(cfg.training.task_name) != "G1StandHeight":
+    if str(cfg.training.task_name) == "G1Recovery":
+        from unilab.training.g1_recovery import validate_recovery_training_config
+
+        validate_recovery_training_config(cfg)
+    elif str(cfg.training.task_name) != "G1StandHeight":
         raise ValueError("G1 height actor adapter may only initialize G1StandHeight")
     loaders = {
         G1_HEIGHT_ACTOR_ADAPTER_ID: load_g1_height_actor_warm_start,
@@ -451,7 +462,11 @@ def play_offpolicy(algo_name: str, cfg: DictConfig) -> str | None:
         or cfg
     )
 
-    env_cfg_override = build_offpolicy_env_cfg_override(algo_name, cfg)
+    env_cfg_override = (
+        build_offpolicy_env_cfg_override(algo_name, cfg, for_play=True)
+        if str(cfg.training.task_name) == "G1Recovery"
+        else build_offpolicy_env_cfg_override(algo_name, cfg)
+    )
 
     device = default_device(torch, cfg.training.device)
     print(f"Using device for play: {device}")
@@ -695,6 +710,9 @@ def play_offpolicy(algo_name: str, cfg: DictConfig) -> str | None:
 def main(cfg: DictConfig) -> None:
     enable_faulthandler()
     ensure_registries()
+    from unilab.training.g1_recovery import validate_recovery_training_config
+
+    validate_recovery_training_config(cfg)
 
     seed_info = apply_configured_training_seed(cfg, torch_runtime=True, cuda=True)
     algo_name = cfg.algo.algo

@@ -33,6 +33,10 @@ class BackendAdapter:
         env_cfg_override = extract_reward_config(self.cfg)
         env_cfg_override.update(self._to_plain_dict(getattr(self.cfg, "env", None)))
 
+        if OmegaConf.select(self.cfg, "training.task_name") == "G1Recovery" and bool(
+            OmegaConf.select(self.cfg, "training.play_only", default=False)
+        ):
+            env_cfg_override.setdefault("assistance", {})["evaluation"] = True
         return env_cfg_override
 
     def build_play_env_cfg_override(self) -> dict[str, Any]:

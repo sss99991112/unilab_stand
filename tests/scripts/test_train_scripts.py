@@ -6466,3 +6466,53 @@ def test_play_interactive_import_does_not_swallow_registry_bootstrap_errors(
 
     with pytest.raises(RuntimeError, match="bootstrap failed"):
         spec.loader.exec_module(mod)  # type: ignore[union-attr]
+
+
+def test_recovery_actor_continuation_uses_strict_loader(monkeypatch, tmp_path):
+    mod = _offpolicy()
+    import unilab.algos.torch.offpolicy.checkpoint_adapter as adapter_module
+    from unilab.training.g1_recovery import validate_recovery_training_config
+
+    parent = _offpolicy_cfg(["task=sac/g1_recovery/mujoco_assist40"])
+    checkpoint = tmp_path / "model_500.pt"
+    checkpoint.write_bytes(b"fixture")
+    import json
+
+    (tmp_path / "run_config.json").write_text(
+        json.dumps(
+            {
+                "config": OmegaConf.to_container(
+                    OmegaConf.masked_copy(parent, [key for key in parent if key != "hydra"]),
+                    resolve=True,
+                )
+            }
+        )
+    )
+    cfg = _offpolicy_cfg(
+        [
+            "task=sac/g1_recovery/mujoco_assist20",
+            f"algo.actor_warm_start_checkpoint={checkpoint}",
+            "algo.actor_warm_start_adapter=g1_height_actor_obs_99_to_99_v1",
+        ]
+    )
+    validate_recovery_training_config(cfg)
+    calls = []
+
+    def fake_load(learner, path):
+        calls.append((learner, path))
+        return {
+            "adapter_id": adapter_module.G1_HEIGHT_ACTOR_CONTINUATION_ADAPTER_ID,
+            "parent_checkpoint_sha256": "c" * 64,
+        }
+
+    monkeypatch.setattr(adapter_module, "load_g1_height_actor_continuation_warm_start", fake_load)
+    learner = object()
+    mod.apply_configured_actor_warm_start("sac", cfg, types.SimpleNamespace(learner=learner))
+    assert calls == [(learner, str(checkpoint))]
+
+
+def test_recovery_post_training_playback_disables_assistance():
+    mod = _offpolicy()
+    cfg = _offpolicy_cfg(["task=sac/g1_recovery/mujoco_assist40", "training.play_only=false"])
+    overrides = mod.build_offpolicy_env_cfg_override("sac", cfg, for_play=True)
+    assert overrides["assistance"]["evaluation"] is True

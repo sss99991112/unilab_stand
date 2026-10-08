@@ -9,3 +9,4 @@ from .joystick import (
     G1WalkRewardConfig,
     G1WalkRoughCfg,
 )
+from .recovery import G1RecoveryCfg, G1RecoveryEnv
