@@ -4,6 +4,8 @@ algo_log_name: fast_sac
 runtime_impl: null
 runtime_resolver: null
 load_run: "-1"
+# Same-task learner restore; replay and simulator are recollected.
+resume_checkpoint: null
 actor_warm_start_checkpoint: null
 actor_warm_start_adapter: null
 seed: 1

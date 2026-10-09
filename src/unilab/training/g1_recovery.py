@@ -22,7 +22,7 @@ def _assistance(cfg: DictConfig) -> RecoveryAssistanceCfg:
 
 
 def validate_recovery_training_config(cfg: DictConfig) -> None:
-    """Each stage is a fresh run; only actor/normalizer may cross stages."""
+    """Cross-stage actor transfer or explicit same-task learner restoration."""
     if OmegaConf.select(cfg, "training.task_name") != "G1Recovery":
         return
     current = _assistance(cfg)
@@ -34,8 +34,13 @@ def validate_recovery_training_config(cfg: DictConfig) -> None:
         raise ValueError("G1Recovery staged training currently requires SAC")
     if str(OmegaConf.select(cfg, "algo.load_run", default="-1")) != "-1":
         raise ValueError(
-            "recovery continuation requires a fresh run and actor_warm_start_checkpoint, not load_run"
+            "recovery continuation uses actor_warm_start_checkpoint or resume_checkpoint, not load_run"
         )
+    if OmegaConf.select(cfg, "algo.resume_checkpoint") not in (None, ""):
+        from unilab.training.offpolicy_resume import validate_configured_learner_resume
+
+        validate_configured_learner_resume(cfg)
+        return
     parent = OmegaConf.select(cfg, "algo.actor_warm_start_checkpoint")
     if parent in (None, ""):
         return

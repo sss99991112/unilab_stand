@@ -9,6 +9,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT))
 
 import numpy as np
 from hydra import compose, initialize_config_dir
@@ -22,18 +23,56 @@ def main() -> None:
     parser.add_argument("--steps", type=int, default=100)
     parser.add_argument("--num-envs", type=int, default=2)
     parser.add_argument("--seed", type=int, default=1)
+    parser.add_argument("--profile", choices=["unassisted_v2"], default=None)
+    parser.add_argument(
+        "--check-runner",
+        action="store_true",
+        help="construct CPU SAC runner and check actor/critic I/O without learning",
+    )
     args = parser.parse_args()
     if not 1 <= args.steps <= 400 or not 1 <= args.num_envs <= 16:
         parser.error("probe requires 1..400 steps and 1..16 environments")
     np.random.seed(args.seed)
     registry.ensure_registries()
     with initialize_config_dir(config_dir=str(ROOT / "conf/offpolicy"), version_base="1.3"):
-        cfg = compose(config_name="config", overrides=["algo=sac", "task=sac/g1_recovery/mujoco"])
+        task = "mujoco_unassisted_v2" if args.profile else "mujoco"
+        cfg = compose(config_name="config", overrides=["algo=sac", f"task=sac/g1_recovery/{task}"])
     overrides = BackendAdapter(cfg, root_dir=ROOT).build_task_env_cfg_override()
     env = registry.make(
         "G1Recovery", num_envs=args.num_envs, sim_backend="mujoco", env_cfg_override=overrides
     )
     try:
+        runner_facts = {}
+        if args.check_runner:
+            import torch
+            from scripts.train_offpolicy import build_runner
+
+            from unilab.training.g1_recovery import validate_recovery_training_config
+
+            torch.set_num_threads(1)
+            cfg.training.device = "cpu"
+            cfg.algo.algo_params.use_compile = False
+            validate_recovery_training_config(cfg)
+            runner = build_runner("sac", cfg)
+            with torch.inference_mode():
+                action = runner.learner.actor.explore(torch.zeros((2, 99)), deterministic=True)
+                critic_logits = runner.learner.qnet(torch.zeros((2, 102)), action)
+            if action.shape != (2, 29) or not torch.isfinite(action).all():
+                raise AssertionError("actor connectivity failed")
+            if (
+                critic_logits.shape[-2:] != (2, cfg.algo.num_atoms)
+                or not torch.isfinite(critic_logits).all()
+            ):
+                raise AssertionError("critic connectivity failed")
+            if runner.train_start_threshold > runner.num_envs * runner.replay_buffer_n:
+                raise AssertionError("learning threshold exceeds replay capacity")
+            runner_facts = {
+                "runner": type(runner).__name__,
+                "learner": type(runner.learner).__name__,
+                "sync_collection": runner.sync_collection,
+                "runner_device_checked": "cpu",
+                "learning_called": False,
+            }
         env.set_autoreset(False)
         state = env.init_state()
         if state.obs["obs"].shape != (args.num_envs, 99) or state.obs["critic"].shape != (
@@ -74,6 +113,10 @@ def main() -> None:
                 {
                     "status": "PASS",
                     "seed": args.seed,
+                    "profile": args.profile or "baseline",
+                    "height_gated_upright": env.cfg.recovery.height_gated_upright,
+                    "assistance_fraction": env.cfg.assistance.effective_fraction,
+                    **runner_facts,
                     "steps": args.steps,
                     "num_envs": args.num_envs,
                     "actor_obs_dim": 99,
@@ -83,7 +126,7 @@ def main() -> None:
                     "initial_target_height": initial_obs[:, 96].tolist(),
                     "max_joint_speed": max_joint_speed,
                     "partial_reset_checked": args.num_envs > 1,
-                    "scope": "task lifecycle only; no trained-policy or recovery-success claim",
+                    "scope": "task lifecycle and optional CPU runner construction only; no learning, CUDA or recovery-success claim",
                 },
                 indent=2,
             )

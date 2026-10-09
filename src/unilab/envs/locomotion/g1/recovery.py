@@ -42,8 +42,12 @@ class RecoveryConfig:
     stable_seconds: float = 1.0
     max_joint_speed: float = 40.0
     max_linear_speed: float = 20.0
+    # Old run configs omit this field and retain the original reward semantics.
+    height_gated_upright: bool = False
 
     def validate(self, target_height: float, ctrl_dt: float) -> None:
+        if not isinstance(self.height_gated_upright, bool):
+            raise ValueError("recovery height_gated_upright must be boolean")
         values = np.asarray(list(vars(self).values()), dtype=float)
         if not np.all(np.isfinite(values)):
             raise ValueError("recovery parameters must be finite")
@@ -165,7 +169,7 @@ def recovery_reward_terms(
     standing = (height >= cfg.standing_height) & (gravity[:, 2] > 0.8)
     return {
         "recovery_progress": height_progress * (0.1 + 0.9 * upright),
-        "recovery_upright": upright,
+        "recovery_upright": upright * height_progress if cfg.height_gated_upright else upright,
         "recovery_stability": stable.astype(height.dtype),
         "recovery_stand_height": np.exp(-20 * np.abs(height - target_height)) * standing,
         "recovery_stand_motion": np.exp(

@@ -1,0 +1,19 @@
+# @package _global_
+# Fresh unassisted experiment: height-gated posture reward; convergence unverified.
+defaults:
+  - /task/sac/g1_recovery/mujoco
+  - _self_
+algo:
+  max_iterations: 50000
+  save_interval: 2500
+  actor_warm_start_checkpoint: null
+  actor_warm_start_adapter: null
+  algo_params:
+    use_compile: false
+env:
+  assistance:
+    stage: 2
+  recovery:
+    height_gated_upright: true
+    # Below the measured ~0.07-0.08m grounded baseline, so lifting remains dense.
+    progress_floor_height: 0.06

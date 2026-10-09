@@ -28,6 +28,10 @@ from unilab.training import (
     resolve_checkpoint_path as resolve_checkpoint_path_common,
 )
 from unilab.training.experiment import ExperimentTracker
+from unilab.training.offpolicy_resume import (
+    apply_configured_learner_resume,
+    validate_configured_learner_resume,
+)
 from unilab.training.sim2sim import policy_load_dim_guard, resolve_sim2sim_config
 from unilab.utils.nan_guard import NanGuardCfg
 
@@ -713,6 +717,8 @@ def main(cfg: DictConfig) -> None:
     from unilab.training.g1_recovery import validate_recovery_training_config
 
     validate_recovery_training_config(cfg)
+    if not cfg.training.play_only:
+        validate_configured_learner_resume(cfg)
 
     seed_info = apply_configured_training_seed(cfg, torch_runtime=True, cuda=True)
     algo_name = cfg.algo.algo
@@ -749,6 +755,9 @@ def main(cfg: DictConfig) -> None:
             runner = None
             try:
                 runner = build_runner(algo_name, cfg)
+                resume_metadata = apply_configured_learner_resume(algo_name, cfg, runner)
+                if resume_metadata is not None and tracker is not None:
+                    tracker.update_summary(resume_metadata)
                 apply_configured_actor_warm_start(algo_name, cfg, runner)
                 runner.learn(
                     max_iterations=cfg.algo.max_iterations,
@@ -766,6 +775,10 @@ def main(cfg: DictConfig) -> None:
                     )
                 if tracker is not None:
                     tracker.update_summary(run_summary)
+                    if resume_metadata is not None:
+                        tracker.update_summary(
+                            {"cumulative_learner_update_count": runner.learner.update_count}
+                        )
             except BaseException as exc:
                 if tracker is not None:
                     tracker.update_summary(
