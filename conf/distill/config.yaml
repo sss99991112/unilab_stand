@@ -88,6 +88,9 @@ training:
     execution_mode: legacy
     run_dir: null
     parent_run_dir: null
+    fork_checkpoint_path: null
+    fork_dataset_path: null
+    isolate_offline_stages: false
     artifact_dir: logs/distill_role_artifacts
     schema_version: 1
     adopt_legacy_artifacts: false

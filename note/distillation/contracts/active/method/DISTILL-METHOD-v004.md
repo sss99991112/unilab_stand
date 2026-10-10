@@ -17,7 +17,8 @@ selected adding a recovery expert through MoE/DAgger into one unified student.
 The existing two-expert workflow and its checkpoint loading remain supported.
 `workflow=g1_stand_height_walk_recovery` is the sole new activation group.
 Standalone SAC recovery reward and the selected source checkpoint are unchanged.
-No formal training, policy promotion or real-robot deployment has completed.
+Execution progress is tracked in the task canvas and evidence ledger.
+Policy promotion and real-robot deployment remain unaccepted.
 
 ## Teacher Policies
 

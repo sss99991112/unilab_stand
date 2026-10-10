@@ -163,3 +163,89 @@ def test_recovery_handover_owner_accepts_locked_cli_config_without_mutating_it(m
         )
     assert OmegaConf.to_container(cfg, resolve=False) == before
     assert OmegaConf.is_struct(cfg) and OmegaConf.is_struct(cfg.env)
+
+
+def test_saved_update_fork_connector_isolates_both_offline_stages(monkeypatch, tmp_path):
+    cfg = _compose(monkeypatch, "g1_stand_height_walk_recovery")
+    seed = tmp_path / "saved_student.pt"
+    seed.write_bytes(b"test-source")
+    cfg.training.offline_init_checkpoint = str(seed)
+    cfg.training.workflow.mode = "fork"
+    cfg.training.workflow.parent_run_dir = str(tmp_path / "parent")
+    cfg.training.workflow.run_dir = str(tmp_path / "child")
+    cfg.training.workflow.fork_checkpoint_path = str(seed)
+    cfg.training.workflow.fork_dataset_path = str(tmp_path / "seed_data.pt")
+    cfg.training.workflow.isolate_offline_stages = True
+    cfg.training.recovery_teacher_sha256 = "a" * 64
+    policy = train_distill.build_student_policy(cfg)
+    loaded = SimpleNamespace(
+        policy=policy,
+        distill_runtime_cfg=train_distill._distill_runtime_cfg(cfg, distill_source="test"),
+    )
+    monkeypatch.setattr(train_distill, "load_distillation_student_policy", lambda *a, **kw: loaded)
+    monkeypatch.setattr(train_distill, "file_sha256", lambda *a: "a" * 64)
+    captured = {}
+    monkeypatch.setattr(train_distill, "fork_workflow_run", lambda **kw: captured.update(fork=kw))
+
+    def stage(**kwargs):
+        captured[kwargs["operation"]] = kwargs
+        if kwargs["operation"] == "aggregate":
+            return {"dataset_num_samples": 10}
+        return {"update_count": 3, "performance_stage_observations": []}
+
+    monkeypatch.setattr(train_distill, "run_offline_stage_process", stage)
+    monkeypatch.setattr(
+        train_distill,
+        "run_multitask_dataset_assembly",
+        lambda *a, **kw: pytest.fail("must use fresh aggregate process"),
+    )
+    monkeypatch.setattr(
+        train_distill,
+        "run_offline_dataset_update",
+        lambda *a, **kw: pytest.fail("must use fresh learner process"),
+    )
+    monkeypatch.setattr(train_distill, "finalize_workflow_performance", lambda **kw: None)
+
+    def dagger(**kwargs):
+        assert kwargs["target_iterations"] == 8
+        run = kwargs["run_dir"]
+        sources = (
+            train_distill.WorkflowDatasetSource(
+                tmp_path / "seed_data.pt", "walk", preserve_row_role_labels=True
+            ),
+        )
+        aggregate = run / "aggregate.pt"
+        assert kwargs["aggregate_datasets"](sources, aggregate) == 10
+        checkpoint = run / "student.pt"
+        assert kwargs["update_student"](aggregate, seed, checkpoint).updates == 3
+        return SimpleNamespace(
+            run_dir=run,
+            manifest_path=run / "run_manifest.json",
+            completed_iterations=8,
+            checkpoint_path=checkpoint,
+            cumulative_num_samples=10,
+        )
+
+    monkeypatch.setattr(train_distill, "run_multirole_dagger_workflow", dagger)
+    result = train_distill.run_single_entry_workflow(cfg)
+    assert result["completed_dagger_iterations"] == 8
+    assert captured["fork"]["checkpoint_override"] == seed
+    assert captured["fork"]["dataset_override"] == tmp_path / "seed_data.pt"
+    assert (
+        captured["aggregate"]["config"]["training"]["multitask_sources"][0][
+            "preserve_row_role_labels"
+        ]
+        is True
+    )
+    update = captured["update"]
+    assert update["config"]["training"]["offline_init_checkpoint"] == str(seed)
+    assert update["config"]["training"]["offline_balance_quotas"]["recovery_to_stand"] == 0.10
+    assert update["arguments"]["auto_expand_replay_budget"] is True
+
+
+def test_offline_isolation_rejects_persistent_mode_before_io(monkeypatch):
+    cfg = _compose(monkeypatch, "g1_stand_height_walk_recovery")
+    cfg.training.workflow.execution_mode = "persistent_async"
+    cfg.training.workflow.isolate_offline_stages = True
+    with pytest.raises(ValueError, match="isolation currently requires execution_mode=legacy"):
+        train_distill.run_single_entry_workflow(cfg)

@@ -2418,3 +2418,155 @@ or policy-quality conclusion is authorized.
   the same failure reproduced on unmodified HEAD 498d19e1 at
   `/private/tmp/unilab-overlay-baseline-owokusv0`. These are recorded limitations,
   not a full repository gate pass; no PR is created.
+
+
+## E125: Recovery continuation command-intent conversion anomaly (2026-10-10)
+
+- User-pasted traceback for continuation
+  `20261010-171936_stand_height_walk_recovery_continued_20261010-174232`
+  passes scenario collection and fails at first-round aggregate source loading.
+  `_validate_command_intents` reports raw type str, raw repr inactive, but
+  normalized value `<class 'frame'>` at source row 102968. The failing source
+  path, file hashes and native owner remain unconfirmed locally.
+- The aggregation callback persists its source list before loading at
+  `datasets/dagger_iteration_1_aggregate.pt.sources.json`; these sources can be
+  replayed without simulation, teacher sampling or learner optimization.
+- Static inspection found no business assignment replacing the str builtin.
+  A fresh local Python 3.13 process validates 262144 inactive labels. This is
+  not the remote Python 3.10 long-lived sampling context and does not establish
+  a fix. E119's previous native closure incident is a clue, not proof that
+  this event has the same cause. No production source change was made.
+- The existing lifecycle replay tool was tested with three roles, all five
+  scenarios and 32 fixture rows (including the prior 16-row live recovery
+  artifact). One build/save/reload cycle passed with exact semantic fingerprints:
+  active/inactive 6/26 and walk/stand_height/recovery 6/6/20. Fixture at
+  `/private/tmp/g1-recovery-offline-aggregate-fixture-do61g9r4`. This proves
+  diagnostic-tool compatibility, not incident-data integrity or policy quality.
+- Next bounded discriminator: one fresh CPU saved-source lifecycle replay on
+  the user's server into a new diagnostic directory, retaining source files
+  and generated result.json. A pass supports a process-context dependency; a
+  failure permits localization on persisted inputs. Neither alone proves the
+  first corrupting writer. Further native capture depends on that result and
+  server capabilities; full training and sampler retries remain unexecuted.
+
+
+## E126: Saved-source server replay PASS; standalone learner prepared (2026-10-10)
+
+- User-reported server identity: commit 833b2993, Python 3.10.12 GCC 11.4.0,
+  Torch 2.7.0+cu128. Fresh CPU lifecycle replay completed one build/save/reload
+  cycle in 5.4534 s (PID 2149951), with 1114112 rows and dimensions 99/99/29.
+  Output is `/ssd1/cyx/liujun/UniLab/logs/distill_debug/20261010-175817_recovery_aggregate_check/cycle-000001.pt`.
+- Roles: walk 329624, stand_height 391610, recovery 392878. Intents: active
+  329624, inactive 784488. Scenarios: walk_flat/static_stand/supine_recovery
+  327680 each; walk_to_stop/recovery_to_stand 65536 each. Exact label fingerprints:
+  command_intents d2ff23ba374fffa5b5d64d6911071ed2555d3d336901a5effc9067f82b789539;
+  roles 67712d197aabd27c504db50266ad7b451d95c22867151fe8bb497dd47d387827;
+  scenarios 2e0c900032bd5c428d901d47f51de3b455741826037d9b826c03014ddb792d65.
+- This passes persisted-input validation in a fresh process and supports a
+  context-dependent runtime failure; it does not identify the first corrupting
+  writer or prove the original sampler/learner process safe. No label guard is
+  bypassed and no native root-cause fix is claimed.
+- Existing direct train_distill.py offline route is verified to accept the new
+  profile with workflow.enabled=false. A local 32-row, five-scenario fixture
+  completed one CPU optimizer update at batch 512, using cached targets, and
+  reloaded a valid 99/29 three-expert recovery policy with Walk=0, StandHeight=1,
+  Recovery=2 and the same routing contract. Source optimizer was not resumed.
+  Local fixture uses the available recovery SAC loader; Walk/Stand SAC source
+  files are unavailable locally. Artifacts and exact resolved full-budget config:
+  `/private/tmp/g1-recovery-standalone-update-y5dpuqma/`.
+- Original workflow updates auto-expand nominal 128 updates to meet eight
+  expected replay passes of both transition labels. The existing
+  required_balanced_replay_updates_for_labels utility, applied to the reported
+  counts and unchanged quotas at batch 512, returns 10281. The standalone
+  command preserves that budget, shuffle/repeat, role behavior supervision and
+  no optimizer resume/save. It is the existing learner stage, without simulation
+  or recollection; no production code changed.
+- This prepares one saved-data DAgger learner update into a new checkpoint.
+  It leaves both failed runs and their manifests untouched and does not
+  register a completed outer round or claim the full eight-round workflow
+  restored. Server learner execution and policy acceptance remain unverified.
+
+
+## E127: First saved-data server student update completed; provenance anomaly remains (2026-10-10)
+
+- Source: user attachment
+  `/Users/sss9999/.codex/attachments/6749c7a0-b7f6-4421-8218-feb632c5450a/已粘贴的文本.txt`,
+  reporting the E126 standalone offline command. Class: user-reported live
+  learner output; server checkpoint bytes remain inaccessible locally.
+- Result: 10281 optimizer updates, 5263872 sampled rows at batch 512 from the
+  verified 1114112-row aggregate. Targets are cached and detached; behavior
+  supervision uses role_expert. Optimizer resume was neither requested nor
+  loaded. The original bootstrap has student_init_agent_steps=10240000.
+- Saved checkpoint:
+  `/ssd1/cyx/liujun/UniLab/logs/distill_workflow/20261010-182545_recovery_dagger1_saved_data/dagger_iteration_1.pt`.
+  This completes the first saved-data learner update, without committing an
+  outer-round completion to either interrupted workflow manifest.
+- Final batch loss is 0.004077199846506119; expert_usage [181,178,153] refers
+  to the final minibatch, not success rate or usage across the run. The final
+  scenario counts are walk_flat 179, static_stand 103, walk_to_stop 77,
+  supine_recovery 102, recovery_to_stand 51, totaling 512.
+- Effective role/intent summaries match E126. However, CLI
+  dataset_metadata.source_metadata[0].role_labels.counts reports
+  {"<class 'frame'>":1,"walk":262143}. The source is bootstrap Walk metadata.
+  The code-confirmed formatter counts Counter(str(item) for item in value),
+  so this output alone cannot distinguish a persisted bad string from a
+  conversion-time anomaly. No symptom normalization patch or clean-provenance
+  claim is made. The first corrupting native owner remains unknown.
+- recovery_to_stand source rows comprise recovery 65198 and stand_height 338;
+  these were collected with the bootstrap student. They do not evaluate the
+  newly updated student or establish handover reliability.
+- Local read-only attachment parsing verifies update_count*512=samples_seen,
+  cached-target supervision and no optimizer resume. A raw torch.load audit
+  against the E125 32-row fixture finds zero invalid effective/source Walk
+  labels; it verifies the audit command only, not server metadata.
+- Next bounded server checks: fresh CPU raw audit of the aggregate's effective
+  role_labels and metadata.source_metadata[0].role_labels, without normalization;
+  existing check_unilab_g1_recovery_integration.py with the new checkpoint,
+  no recovery-teacher option, seed 1 and 750 steps. Neither check trains or
+  alters source checkpoints. Repeated initial-state recovery, sustained strict
+  stability, Walk/StandHeight regression and later DAgger rounds remain pending.
+
+
+## E128: Authorized eight-round saved-student continuation prepared (2026-10-10)
+
+- Human instruction: directly start eight rounds. The launcher explicitly runs
+  eight additional rounds from the E127 saved student; proposed manual metadata
+  and physical pre-evaluation are not imposed as separate human gates.
+- Owners: workflow.fork_workflow_run accepts an optional matched checkpoint/data
+  pair; verifies declared dataset path, parent-checkpoint hash, cached targets,
+  dimensions and role membership; records a new seed with zero bootstrap updates
+  and zero completed new rounds. Neither old manifest is marked complete.
+- The cumulative seed preserves mixed row roles even without one global scenario.
+  This avoids relabeling the mixed aggregate as Walk when it is reused as a source.
+- Opt-in training.workflow.isolate_offline_stages executes the existing DAgger
+  aggregate and learner entrypoint owners in fresh child processes. Request/output
+  hashes and worker identities are checked; stage errors stop the workflow.
+  The default is false, the original in-process learner call is retained, and
+  unsupported persistent combinations fail before I/O. No label normalization
+  guard is weakened or frame-class value rewritten. The native writer and E127
+  nested metadata anomaly remain unconfirmed; this is containment, not repair.
+- Public launcher: scripts/deploy/train_unilab_g1_recovery_dagger8.sh. Defaults to
+  the exact three server SAC sources, E127 saved student and E126 aggregate;
+  forks from the original verified bootstrap lineage, skips bootstrap, and runs
+  eight rounds in a fresh timestamped directory. Quotas, batch 512, cached role
+  targets, fresh optimizers and eight expected transition replays are unchanged.
+- Focused verification command:
+  `UV_CACHE_DIR=/private/tmp/unilab-g1-recovery-uv-cache uv run --no-sync python -m pytest -p no:cacheprovider tests/algos/test_distill_offline_stage.py tests/algos/test_distill_workflow.py tests/algos/test_g1_recovery_integration.py tests/scripts/test_g1_recovery_distill_workflow.py tests/scripts/test_stand_height_walk_distill_workflow.py -q -x`:
+  47 passed. Eight-round fixture performs 40 scenario collections and 16 real
+  subprocess offline stages, checks previous-student lineage, all five scenario
+  counts, mixed roles, budget expansion and immutable parent bytes. Fixtures use
+  synthetic small observations/actions and do not test robot physics. The real
+  CLI connector is separately checked to forward seed paths and both isolated
+  stages; child failure returns no successful output.
+- A local actual 99/99/29, batch-512, three-expert Recovery fixture ran fresh
+  aggregation (32 rows) and one fresh CPU optimizer update; strict checkpoint
+  reload and Recovery routing contract validation passed. Workers 21719/21720;
+  artifacts `/private/var/folders/gv/cnwcmmwn663_898_6c2s644m0000gn/T/g1-recovery-isolated-offline-a5jk8rv1/`.
+- Ruff lint/format passed for five affected Python files; bash -n passed for
+  the launcher. A sandboxed shell harness verified the exact launch arguments,
+  and the resulting real Hydra CLI --cfg job --resolve composes three experts,
+  eight rounds, matched seed paths and offline isolation. Artifact:
+  `/private/var/folders/gv/cnwcmmwn663_898_6c2s644m0000gn/T/g1-recovery-launcher-check-7qy0qqz7/resolved_config.yaml`.
+  Full repository gates are not newly claimed. Formal CUDA execution,
+  eight-round server completion and physical reliability remain unverified;
+  this session has no direct server connection.

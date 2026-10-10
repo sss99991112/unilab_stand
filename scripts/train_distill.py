@@ -61,6 +61,7 @@ from unilab.algos.torch.distill import (
 from unilab.algos.torch.distill.g1_persistent_worker import (
     build_persistent_g1_distillation_runtime,
 )
+from unilab.algos.torch.distill.offline_stage import run_offline_stage_process
 from unilab.logging import OffPolicyLogger
 from unilab.training import BackendAdapter, ExperimentTracker, create_env, ensure_registries
 from unilab.training.run import resolve_task_checkpoint_path
@@ -1748,6 +1749,11 @@ def run_single_entry_workflow(
             "training.workflow.execution_mode must be 'legacy' or "
             f"'persistent_async', got {execution_mode!r}"
         )
+    isolate_offline = bool(
+        OmegaConf.select(cfg, "training.workflow.isolate_offline_stages", default=False)
+    )
+    if isolate_offline and execution_mode != "legacy":
+        raise ValueError("offline process isolation currently requires execution_mode=legacy")
     if execution_mode == "legacy" and persistent_scenario_collector_factory is not None:
         raise ValueError("legacy execution_mode forbids persistent_scenario_collector_factory")
 
@@ -1920,9 +1926,25 @@ def run_single_entry_workflow(
         parent_run_dir = OmegaConf.select(cfg, "training.workflow.parent_run_dir")
         if parent_run_dir in (None, ""):
             raise ValueError("training.workflow.mode=fork requires parent_run_dir")
+        fork_overrides = {
+            name: OmegaConf.select(cfg, f"training.workflow.{name}")
+            for name in ("fork_checkpoint_path", "fork_dataset_path")
+        }
         fork_workflow_run(
             parent_run_dir=_workflow_path(parent_run_dir),
             run_dir=run_dir,
+            **(
+                {
+                    "checkpoint_override": _workflow_path(fork_overrides["fork_checkpoint_path"])
+                    if fork_overrides["fork_checkpoint_path"] not in (None, "")
+                    else None,
+                    "dataset_override": _workflow_path(fork_overrides["fork_dataset_path"])
+                    if fork_overrides["fork_dataset_path"] not in (None, "")
+                    else None,
+                }
+                if any(value not in (None, "") for value in fork_overrides.values())
+                else {}
+            ),
         )
         bootstrap_result = None
     elif mode == "resume" or (mode == "auto" and manifest_path.is_file()):
@@ -2312,6 +2334,7 @@ def run_single_entry_workflow(
             }
             if source.scenario is not None:
                 source_record["scenario"] = source.scenario
+            if source.scenario is not None or source.preserve_row_role_labels:
                 source_record["preserve_row_role_labels"] = source.preserve_row_role_labels
             source_records.append(source_record)
         source_snapshot_path = output_path.parent / f"{output_path.name}.sources.json"
@@ -2333,7 +2356,16 @@ def run_single_entry_workflow(
         assembly_cfg.training.multitask_expected_student_obs_dim = specs[0].student_obs_dim
         assembly_cfg.training.multitask_expected_teacher_obs_dim = specs[0].teacher_obs_dim
         assembly_cfg.training.multitask_expected_teacher_action_dim = specs[0].teacher_action_dim
-        assembled = run_multitask_dataset_assembly(assembly_cfg, dataset_path=output_path)
+        if isolate_offline:
+            assembled = run_offline_stage_process(
+                entrypoint=Path(__file__),
+                config=cast(dict[str, Any], OmegaConf.to_container(assembly_cfg, resolve=True)),
+                operation="aggregate",
+                arguments={"dataset_path": str(output_path)},
+                output_path=output_path,
+            )
+        else:
+            assembled = run_multitask_dataset_assembly(assembly_cfg, dataset_path=output_path)
         return int(assembled["dataset_num_samples"])
 
     def update_dagger_student(
@@ -2384,20 +2416,40 @@ def run_single_entry_workflow(
             )
         )
         output_checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
-        result = run_offline_dataset_update(
-            update_cfg,
-            teacher_checkpoint=specs[0].teacher_checkpoint_path,
-            dataset_path=dataset_path,
-            batch_size=int(
+        update_arguments = {
+            "teacher_checkpoint": str(specs[0].teacher_checkpoint_path),
+            "dataset_path": str(dataset_path),
+            "batch_size": int(
                 OmegaConf.select(cfg, "training.workflow.dagger_batch_size", default=512)
             ),
-            max_updates=updates,
-            checkpoint_path=output_checkpoint_path,
-            device=_distill_device(cfg),
-            auto_expand_replay_budget=True,
-            progress_callback=on_update_progress,
-            performance_clock=performance_clock,
-        )
+            "max_updates": updates,
+            "checkpoint_path": str(output_checkpoint_path),
+            "device": _distill_device(cfg),
+            "auto_expand_replay_budget": True,
+        }
+        if isolate_offline:
+            result = run_offline_stage_process(
+                entrypoint=Path(__file__),
+                config=cast(dict[str, Any], OmegaConf.to_container(update_cfg, resolve=True)),
+                operation="update",
+                arguments=update_arguments,
+                output_path=output_checkpoint_path,
+            )
+        else:
+            result = run_offline_dataset_update(
+                update_cfg,
+                teacher_checkpoint=specs[0].teacher_checkpoint_path,
+                dataset_path=dataset_path,
+                batch_size=int(
+                    OmegaConf.select(cfg, "training.workflow.dagger_batch_size", default=512)
+                ),
+                max_updates=updates,
+                checkpoint_path=output_checkpoint_path,
+                device=_distill_device(cfg),
+                auto_expand_replay_budget=True,
+                progress_callback=on_update_progress,
+                performance_clock=performance_clock,
+            )
         return WorkflowStudentUpdateResult(
             updates=int(result["update_count"]),
             performance_stage_observations=tuple(
@@ -2624,11 +2676,48 @@ def main(cfg: DictConfig) -> None:
     )
 
 
+def _run_offline_stage_worker(request_path: Path, result_path: Path) -> None:
+    """Assemble a fresh CPU aggregation or existing cached-target learner stage."""
+    request = json.loads(request_path.read_text(encoding="utf-8"))
+    cfg = OmegaConf.create(request["config"])
+    arguments = request["arguments"]
+    operation = request["operation"]
+    if operation == "aggregate":
+        raw = run_multitask_dataset_assembly(cfg, **arguments)
+        result = {"dataset_num_samples": raw["dataset_num_samples"]}
+        output_path = Path(arguments["dataset_path"]).resolve()
+    elif operation == "update":
+        raw = run_offline_dataset_update(cfg, **arguments, performance_clock=time.perf_counter)
+        result = {
+            "update_count": raw["update_count"],
+            "performance_stage_observations": raw["performance_stage_observations"],
+        }
+        output_path = Path(arguments["checkpoint_path"]).resolve()
+    else:
+        raise ValueError(f"unsupported offline operation: {operation}")
+    payload = {
+        "operation": operation,
+        "request_sha256": file_sha256(request_path),
+        "output_path": str(output_path),
+        "output_sha256": file_sha256(output_path),
+        "worker_pid": os.getpid(),
+        "result": result,
+    }
+    with result_path.open("x", encoding="utf-8") as stream:
+        json.dump(payload, stream, sort_keys=True)
+    print(f"[distill-offline-stage] {json.dumps(payload, sort_keys=True)}", flush=True)
+
+
 def _run_main_with_native_fail_stop() -> None:
     """Run Hydra and preserve any unhandled diagnostic failure in a core."""
 
     try:
-        main()
+        if sys.argv[1:2] == ["--offline-stage-request"]:
+            if len(sys.argv) != 5 or sys.argv[3] != "--offline-stage-result":
+                raise ValueError("offline worker requires request and result paths")
+            _run_offline_stage_worker(Path(sys.argv[2]), Path(sys.argv[4]))
+        else:
+            main()
     except BaseException:
         if os.environ.get("UNILAB_NATIVE_ABORT_ON_CORRUPTION", "0") == "1":
             sys.stdout.flush()

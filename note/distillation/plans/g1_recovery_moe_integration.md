@@ -1,7 +1,8 @@
 # G1 三专家 MoE/DAgger 接入与运行
 
 当前分支：`codex/g1-recovery-moe-integration`。
-已有行走/站立权重保留；第三个起身专家已经接线，但尚未训练。
+初始化保留了行走/站立权重；服务器已完成 bootstrap 和首轮已采样数据的
+DAgger 学生更新。新 checkpoint 的实际起身与旧能力保持尚未验收。
 独立起身教师继续使用选定的 `model_12000.pt`，不修改 SAC 奖励。
 
 ## 本地已生成
@@ -35,7 +36,36 @@ git pull --ff-only origin codex/g1-recovery-moe-integration
 切换冲突，先核对并保留这些改动。采用分支同步后，不再应用同一份补丁。
 本地曾导出的补丁只作为初始准备阶段的证据保留。
 
-## 服务器正式训练
+## 从已更新的学生继续 8 轮（当前入口）
+
+用户于 2026-10-10 明确要求直接开始 8 轮训练，跳过拟议的人工预检查。
+当前学生为
+`logs/distill_workflow/20261010-182545_recovery_dagger1_saved_data/dagger_iteration_1.pt`，
+累计数据为
+`logs/distill_debug/20261010-175817_recovery_aggregate_check/cycle-000001.pt`。
+此入口从它们开始追加 8 轮；不再初始化第三专家、重做 bootstrap 或训练 SAC 教师。
+
+```bash
+cd /ssd1/cyx/liujun/UniLab
+git pull --ff-only origin codex/g1-recovery-moe-integration
+bash scripts/deploy/train_unilab_g1_recovery_dagger8.sh
+```
+
+启动脚本自带本次服务器教师与学生路径，创建带时间戳的新输出目录。
+每轮用上一轮学生采集五场景，累计合并并由缓存的教师动作监督更新。
+合并与更新分别通过现有离线 owner 在新进程中执行，避免复用之前出错的
+长驻采样进程上下文；该选项只影响 DAgger 的离线阶段，默认关闭。
+场景配额与两种交接场景的八次预期重放预算保持原配置，更新次数按累计数据
+自动增加，不把每轮优化步数固定为 128。
+
+新增 fork 参数校验学生声明的数据路径、父 checkpoint 哈希、维度与角色。
+累计数据作为一个保留逐行角色和场景的 seed，原失败 run 与已更新学生不被覆盖，
+也不伪造原 manifest 中的首轮完成状态。新 run 从第 1 轮计数，最终 checkpoint
+为其 `checkpoints/dagger_iteration_8.pt`。失败会停止，保留阶段请求和原始错误。
+原生异常的写入者仍未确认；进程隔离是执行上的隔离措施，不代表根因已修复。
+本机未连接训练服务器，正式启动与行为质量需要服务器后续输出才能确认。
+
+## 首次 bootstrap 的历史启动命令
 
 以下为已准备的命令；本会话没有连接服务器或执行它。先同步本分支代码，
 并确认三个教师与原学生路径仍存在。两个旧教师路径来自历史运行记录，

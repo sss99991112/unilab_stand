@@ -13,9 +13,12 @@ Active method: `DISTILL-METHOD-v004`; runtime: `DISTILL-TRAIN-v003`.
 | Formal CLI configuration | train CLI | PASS | Resolved 3-expert workflow with full activation; no learning |
 | Existing policy reference handover | MuJoCo probe | PASS (bounded) | seed 1: handover at 9.0 s; 6 more seconds of stand expert; no early termination |
 | Locked Hydra scenario config | recovery scenario owner | PASS (bounded) | Real CLI config regression plus 1-env, 16-row MuJoCo owner probe; source lock/content preserved |
-| Unified student recovery | formal training / live eval | PENDING | Server trace reaches DAgger after bootstrap; trained policy quality not evaluated |
+| Unified student recovery | formal training / live eval | PENDING physical acceptance | Bootstrap and first saved-data update completed (E127); trained policy not evaluated |
 | Repeated falls and return to walk | live eval | PENDING | No physical student acceptance yet |
-| Server formal workflow | user server | BLOCKED, fix prepared | Run 20261010-171936 fails on locked recovery config overlay; fork continuation reuses verified bootstrap; no direct server access |
+| Server formal workflow | user server | NEW PATH READY, SERVER PENDING | E128: explicit saved-update seed and fresh-process offline stages; previous in-process failure retained, native owner unknown |
+| Standalone saved-data learner | offline update owner | SERVER UPDATE COMPLETE | E127: 10281 updates, 5263872 sampled rows, cached targets, separate checkpoint saved; quality pending |
+| Eight-round saved-student continuation | workflow / offline owners | LOCAL PASS, SERVER PENDING | E128: eight toy rounds, 40 scenario collections, 16 child stages, current-student lineage and cumulative roles preserved |
+| Nested source-label provenance | raw artifact / CLI formatter | UNCONFIRMED | E127: output reports one frame-class Walk label; raw persisted metadata audit pending |
 | Persistent recovery scenario | runtime | UNSUPPORTED | Rejected; new profile explicitly uses legacy |
 | Real-robot guard and export | deployment | PENDING | Height/support state guard currently uses MuJoCo sensors |
 

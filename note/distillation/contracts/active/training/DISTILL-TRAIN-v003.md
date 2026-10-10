@@ -90,3 +90,14 @@ barrier and legacy default above are unchanged. The new three-role recovery
 profile currently supports legacy execution only; its persistent mode is
 rejected before writes. Existing two-role profiles retain their prior runtime
 choices. This binding does not authorize or prove a formal training run.
+
+
+Recovery continuation may explicitly fork from a saved offline student update
+and its named cumulative dataset, with the student's parent-checkpoint hash
+verified. This seeds a new run without recording uncommitted old-round completion.
+Opt-in `training.workflow.isolate_offline_stages=true` executes DAgger aggregation
+and learning in fresh processes through the existing offline entrypoint owners;
+collection, quotas, cached targets and the cumulative outer barrier are unchanged.
+The default remains false and persistent recovery remains unsupported. This is
+runtime containment with local contract evidence, not a native root-cause or
+physical-quality acceptance claim (E128).

@@ -26,6 +26,7 @@ from .performance import (
     DistillationStageObservation,
     load_distillation_metrics,
 )
+from .playback import load_distillation_student_policy
 
 ROLE_ARTIFACT_MANIFEST_VERSION = 1
 
@@ -1269,7 +1270,13 @@ def finalize_workflow_performance(
     return metrics_path
 
 
-def fork_workflow_run(*, parent_run_dir: str | Path, run_dir: str | Path) -> Path:
+def fork_workflow_run(
+    *,
+    parent_run_dir: str | Path,
+    run_dir: str | Path,
+    checkpoint_override: str | Path | None = None,
+    dataset_override: str | Path | None = None,
+) -> Path:
     parent_manifest_path = Path(parent_run_dir) / "run_manifest.json"
     if not parent_manifest_path.is_file():
         raise FileNotFoundError(f"parent workflow manifest does not exist: {parent_manifest_path}")
@@ -1277,6 +1284,8 @@ def fork_workflow_run(*, parent_run_dir: str | Path, run_dir: str | Path) -> Pat
     manifest_path = resolved_run_dir / "run_manifest.json"
     if manifest_path.exists():
         raise FileExistsError(f"fork workflow run already exists: {manifest_path}")
+    if (checkpoint_override is None) != (dataset_override is None):
+        raise ValueError("fork checkpoint and dataset overrides must be provided together")
     parent = _load_json(parent_manifest_path)
     checkpoint = _verified_current_checkpoint(parent)
     parent_iterations = parent.get("dagger_iterations", [])
@@ -1323,5 +1332,49 @@ def fork_workflow_run(*, parent_run_dir: str | Path, run_dir: str | Path) -> Pat
         "dagger_iterations": [],
         "scenario_specs": list(parent.get("scenario_specs", [])),
     }
+    if checkpoint_override is not None and dataset_override is not None:
+        seed_checkpoint = Path(checkpoint_override).resolve()
+        seed_dataset = Path(dataset_override).resolve()
+        loaded = load_distillation_student_policy(seed_checkpoint, device="cpu")
+        runtime = loaded.distill_runtime_cfg
+        if Path(str(runtime.get("dataset_path", ""))).resolve() != seed_dataset:
+            raise ValueError("fork seed checkpoint does not name the supplied dataset")
+        if runtime.get("student_init_checkpoint_sha256") != file_sha256(checkpoint):
+            raise ValueError("fork seed checkpoint does not descend from the parent checkpoint")
+        role_contract = parent["role_artifacts"][0]
+        dataset = load_distillation_dataset(
+            seed_dataset,
+            expected_student_obs_dim=int(role_contract["student_obs_dim"]),
+            expected_teacher_obs_dim=int(role_contract["teacher_obs_dim"]),
+            expected_teacher_action_dim=int(role_contract["teacher_action_dim"]),
+            device="cpu",
+        )
+        if dataset.teacher_actions is None or dataset.role_labels is None:
+            raise ValueError("fork seed dataset requires cached targets and row role labels")
+        roles = {item["role"] for item in parent["role_artifacts"]}
+        if set(dataset.role_labels) - roles:
+            raise ValueError("fork seed dataset contains unknown role labels")
+        if (
+            loaded.obs_dim != dataset.student_obs_dim
+            or loaded.action_dim != dataset.teacher_action_dim
+        ):
+            raise ValueError("fork seed checkpoint and dataset dimensions differ")
+        payload.update(
+            {
+                "bootstrap_checkpoint_path": str(seed_checkpoint),
+                "bootstrap_checkpoint_sha256": file_sha256(seed_checkpoint),
+                "bootstrap_dataset_path": str(seed_dataset),
+                "bootstrap_dataset_sha256": file_sha256(seed_dataset),
+                "bootstrap_num_samples": dataset.num_samples,
+                "bootstrap_sources": [
+                    {
+                        "path": str(seed_dataset),
+                        "role": role_contract["role"],
+                        "preserve_row_role_labels": True,
+                    }
+                ],
+                "seed_kind": "saved_student_update",
+            }
+        )
     _write_json_atomic(manifest_path, payload)
     return manifest_path
