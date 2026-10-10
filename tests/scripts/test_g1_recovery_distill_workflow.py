@@ -1,7 +1,9 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import scripts.train_distill as train_distill
+import torch
 from hydra import compose, initialize_config_dir
 from hydra.core.global_hydra import GlobalHydra
 from omegaconf import OmegaConf
@@ -19,7 +21,10 @@ def _compose(monkeypatch, workflow):
         monkeypatch.setenv(name, "/tmp/source.pt")
     GlobalHydra.instance().clear()
     with initialize_config_dir(config_dir=str(ROOT / "conf/distill"), version_base="1.3"):
-        return compose("config", overrides=["workflow=" + workflow])
+        return compose(
+            "config",
+            overrides=["task=g1_walk_height_nominal/mujoco", "workflow=" + workflow],
+        )
 
 
 def test_three_expert_profile_is_opt_in_and_old_profile_unchanged(monkeypatch):
@@ -81,3 +86,80 @@ def test_partial_recovery_activation_is_rejected_before_artifact_io(monkeypatch)
     cfg.training.recovery_integration = False
     with pytest.raises(ValueError, match="activated together"):
         train_distill.run_single_entry_workflow(cfg)
+
+
+def test_recovery_handover_owner_accepts_locked_cli_config_without_mutating_it(monkeypatch):
+    from unilab.algos.torch.distill import recovery_workflow
+    from unilab.algos.torch.distill.moe_student import MoEStudentPolicy
+    from unilab.algos.torch.distill.recovery_integration import (
+        RECOVERY_ROLES,
+        RECOVERY_ROUTING_CONTRACT,
+        validate_recovery_env,
+    )
+    from unilab.base.registry import apply_cfg_overrides
+    from unilab.envs.locomotion.g1.recovery_combined import G1RecoveryCombinedCfg
+
+    cfg = _compose(monkeypatch, "g1_stand_height_walk_recovery")
+    before = OmegaConf.to_container(cfg, resolve=False)
+    assert OmegaConf.is_struct(cfg.env)
+    assert "max_episode_seconds" not in cfg.env
+    role_cfgs = {
+        entry["role"]: train_distill._workflow_role_cfg(cfg, entry)
+        for entry in train_distill._workflow_role_entries(cfg)
+    }
+    policy = MoEStudentPolicy(
+        obs_dim=99,
+        action_dim=29,
+        num_experts=3,
+        expert_hidden_dims=[8],
+        router_hidden_dims=[8],
+        routing_mode="hard",
+    )
+    loaded = SimpleNamespace(
+        policy=policy,
+        distill_runtime_cfg={
+            "role_expert_targets": RECOVERY_ROLES,
+            "recovery_routing_contract": RECOVERY_ROUTING_CONTRACT,
+            "expert_behavior_loss_source": "role",
+        },
+    )
+    monkeypatch.setattr(
+        recovery_workflow, "load_sac_teacher_policy", lambda *a, **kw: torch.nn.Identity()
+    )
+    monkeypatch.setattr(
+        recovery_workflow, "load_distillation_student_policy", lambda *a, **kw: loaded
+    )
+    monkeypatch.setattr(recovery_workflow, "ensure_registries", lambda: None)
+
+    class EnvBoundaryReachedError(Exception):
+        pass
+
+    def verify_config(scenario_cfg, *, env_cfg_override, task_name, sim_backend, num_envs):
+        assert task_name == "G1RecoveryCombined" and sim_backend == "mujoco"
+        assert num_envs == cfg.training.workflow.collect_num_envs
+        assert scenario_cfg.student.num_experts == 3
+        assert scenario_cfg.algo.role_expert_targets == cfg.algo.role_expert_targets
+        assert scenario_cfg.training.workflow.run_dir == cfg.training.workflow.run_dir
+        env_cfg = G1RecoveryCombinedCfg()
+        apply_cfg_overrides(env_cfg, env_cfg_override)
+        assert env_cfg.max_episode_seconds == 15.0
+        assert env_cfg.recovery_reset_supine is True
+        assert env_cfg.commands.rel_standing_envs == 1.0
+        assert all(value == 0 for bound in env_cfg.commands.vel_limit for value in bound)
+        assert env_cfg.curriculum.enabled is False
+        assert env_cfg.reward_config.min_base_height == 0.0
+        assert env_cfg.reward_config.max_tilt_deg == 180.0
+        validate_recovery_env(SimpleNamespace(cfg=env_cfg))
+        raise EnvBoundaryReachedError
+
+    monkeypatch.setattr(recovery_workflow, "create_env", verify_config)
+    with pytest.raises(EnvBoundaryReachedError):
+        recovery_workflow.collect_recovery_workflow_scenario(
+            cfg,
+            role_cfgs,
+            Path("/tmp/student.pt"),
+            Path("/tmp/data.pt"),
+            performance_clock=lambda: 0.0,
+        )
+    assert OmegaConf.to_container(cfg, resolve=False) == before
+    assert OmegaConf.is_struct(cfg) and OmegaConf.is_struct(cfg.env)

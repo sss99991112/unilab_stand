@@ -24,6 +24,8 @@
 
 ```bash
 cd /ssd1/cyx/liujun/UniLab
+# 单分支抓取配置需要先登记新分支；在首次同步时执行一次。
+git config --add remote.origin.fetch '+refs/heads/codex/g1-recovery-moe-integration:refs/remotes/origin/codex/g1-recovery-moe-integration'
 git fetch origin
 git switch codex/g1-recovery-moe-integration
 git pull --ff-only origin codex/g1-recovery-moe-integration
@@ -60,6 +62,34 @@ CUDA_VISIBLE_DEVICES=0 HYDRA_FULL_ERROR=1 uv run --no-sync train   --algo distil
 行走 35%、静止站立 20%、行走后停稳 15%、仰躺起身 20%、起身交接 10%。
 这是一组初始实验预算和配额，不能保证收敛。训练入口校验初始化模型、
 第三专家映射、观测契约及起身教师哈希；本阶段不恢复旧两专家优化器。
+
+## 已完成 Bootstrap 后中断
+
+2026-10-10 的服务器 run `20261010-171936_stand_height_walk_recovery`
+已进入 DAgger，但恢复交接场景在合并 Hydra 锁定配置时失败。修复仅在
+场景 owner 内复制配置再覆盖新任务字段，保留原配置的锁定状态和内容。
+
+先拉取修复，不再重新生成初始化文件或执行 bootstrap。中断轮可能已有
+尚未提交到 run manifest 的性能记录，因此使用已有 fork 流程在新目录继续，
+原失败目录保留。父 checkpoint 和合并数据会按 manifest 校验哈希。
+
+```bash
+# 三个教师环境变量继续指向原文件。
+UNILAB_RECOVERY_PARENT="$PWD/logs/distill_workflow/20261010-171936_stand_height_walk_recovery"
+export UNILAB_G1_RECOVERY_MOE_INIT="$UNILAB_RECOVERY_PARENT/initial_3expert.pt"
+UNILAB_RECOVERY_RUN="${UNILAB_RECOVERY_PARENT}_continued_$(date +%Y%m%d-%H%M%S)"
+CUDA_VISIBLE_DEVICES=0 HYDRA_FULL_ERROR=1 uv run --no-sync train \
+  --algo distill --task g1_walk_height_nominal --sim mujoco \
+  workflow=g1_stand_height_walk_recovery training.device=cuda:0 \
+  training.workflow.mode=fork \
+  "training.workflow.parent_run_dir=$UNILAB_RECOVERY_PARENT" \
+  "training.workflow.run_dir=$UNILAB_RECOVERY_RUN" \
+  "training.workflow.artifact_dir=$UNILAB_RECOVERY_PARENT/role_artifacts"
+```
+
+新目录从父 run 的最后一个已验证 checkpoint 开始；本次预计为
+`bootstrap_student.pt`。Bootstrap 不再优化，未完成的 DAgger 轮重新采样。
+本地小采样只验证场景连通性，不代表统一学生起身或交接质量验收。
 
 ## 训练后验收
 

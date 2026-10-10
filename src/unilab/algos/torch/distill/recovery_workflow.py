@@ -21,7 +21,8 @@ def collect_recovery_workflow_scenario(
     request_start = performance_clock()
     root = Path(__file__).resolve().parents[5]
     scenario_cfg = OmegaConf.merge(
-        cfg,
+        # Hydra locks the source task schema; isolate the different task's overlay.
+        OmegaConf.to_container(cfg, resolve=False),
         OmegaConf.load(root / "conf/distill/task/g1_recovery_combined/mujoco.yaml"),
         {
             "env": {

@@ -12,9 +12,10 @@ Active method: `DISTILL-METHOD-v004`; runtime: `DISTILL-TRAIN-v003`.
 | Handover labels and schema | collector / workflow | PASS | Pre-action labels, cached actions, transition ages and save/reload |
 | Formal CLI configuration | train CLI | PASS | Resolved 3-expert workflow with full activation; no learning |
 | Existing policy reference handover | MuJoCo probe | PASS (bounded) | seed 1: handover at 9.0 s; 6 more seconds of stand expert; no early termination |
-| Unified student recovery | formal training / live eval | PENDING | Expert 2 is still initialized, no trained three-expert checkpoint |
+| Locked Hydra scenario config | recovery scenario owner | PASS (bounded) | Real CLI config regression plus 1-env, 16-row MuJoCo owner probe; source lock/content preserved |
+| Unified student recovery | formal training / live eval | PENDING | Server trace reaches DAgger after bootstrap; trained policy quality not evaluated |
 | Repeated falls and return to walk | live eval | PENDING | No physical student acceptance yet |
-| Server source availability | user server | UNVERIFIED | Historical Walk/StandHeight source paths recorded; no SSH connection |
+| Server formal workflow | user server | BLOCKED, fix prepared | Run 20261010-171936 fails on locked recovery config overlay; fork continuation reuses verified bootstrap; no direct server access |
 | Persistent recovery scenario | runtime | UNSUPPORTED | Rejected; new profile explicitly uses legacy |
 | Real-robot guard and export | deployment | PENDING | Height/support state guard currently uses MuJoCo sensors |
 

@@ -2367,3 +2367,54 @@ or policy-quality conclusion is authorized.
   changes from the isolated copy were applied to the source working tree.
 - The previously recorded 171 passing impact tests remain the bounded behavior
   evidence. Uploading source does not qualify the untrained third expert.
+
+
+## E124: Locked recovery scenario overlay repair (2026-10-10)
+
+- User-pasted server trace for run
+  `20261010-171936_stand_height_walk_recovery` reaches the DAgger
+  `recovery_to_stand` owner after bootstrap and fails with
+  `ConfigKeyError: env.max_episode_seconds is not in struct`. The actual server
+  manifest and checkpoint bytes have not been inspected locally.
+- Real Hydra composition reproduced the exact failure, with source root/env
+  struct flags both true. Only `recovery_workflow.py` changes production behavior:
+  materialize an independent unresolved mapping before overlaying the combined
+  task. The source contents and struct flags remain unchanged; role mappings,
+  rewards, teachers, checkpoints, routing and workflow barriers are preserved.
+- Regression enters the real scenario owner from a locked CLI-equivalent config,
+  applies the real BackendAdapter output to G1RecoveryCombinedCfg, verifies
+  reset/routing/control fields, and preserves the source config.
+- Exact focused verification:
+  `uv run --no-sync python -m pytest -p no:cacheprovider -q
+  tests/scripts/test_g1_recovery_distill_workflow.py
+  tests/algos/test_g1_recovery_integration.py
+  tests/scripts/test_stand_height_walk_distill_workflow.py`: 20 passed.
+  Existing workflow fork/resume test selection: 1 passed, 17 deselected.
+- Actual scenario-owner sentinel: real Hydra profile, CPU, 1 MuJoCo env, 16
+  samples. Finite tensors are (16,99), (16,99), (16,29); all rows are recovery;
+  all seven legacy request performance stages emitted and dataset reloaded.
+  Source configuration remained locked and unchanged. Artifact/report:
+  `/private/tmp/g1-recovery-hydra-sentinel-ukls78xl/recovery_to_stand.pt` and
+  adjacent `report.json`. Selected recovery SAC labels were used. The old MoE
+  standing expert served as the standing fixture because the standing SAC source
+  is unavailable locally; no standing rows were visited. This is runtime
+  connectivity, not student or handover quality acceptance.
+- Resume audit found request metrics are written before outer-iteration manifest
+  commit; an interrupted first round may therefore fail the existing strict
+  metrics path/hash gate. No guard is bypassed or manifest rewritten. Existing
+  fork_workflow_run provides a fresh metrics boundary and verifies/reuses the
+  completed parent checkpoint and aggregate data. A synthetic partial-metrics
+  fixture confirmed zero bootstrap updates and immutable parent bytes.
+- Server instructions reuse the failed run's initial checkpoint and role
+  artifact directory, use mode=fork with a fresh child run, and recollect the
+  unfinished round. Standalone SAC and teacher selection remain unchanged.
+- Focused Ruff lint/format and git diff --check passed. Complete repository
+  validation and server restart remain separate, unverified boundaries.
+
+- Pre-commit `make check` on the exact-diff isolated snapshot: formatting and
+  lint passed; type step could not spawn missing mypy. No broad snapshot
+  formatting was applied to source. Documentation checks: 19 passed, 1 failed
+  on missing `training.play_only` interpolation in standalone task YAML scans;
+  the same failure reproduced on unmodified HEAD 498d19e1 at
+  `/private/tmp/unilab-overlay-baseline-owokusv0`. These are recorded limitations,
+  not a full repository gate pass; no PR is created.
