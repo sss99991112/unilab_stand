@@ -8,7 +8,7 @@ not the current design authority.
 
 1. [Concept Figure](../architecture/concept/03_g1_multiteacher_distillation_method.data.json)
    - Human-controlled method intent.
-2. [Active Method Contract](contracts/active/method/DISTILL-METHOD-v003.md)
+2. [Active Method Contract](contracts/active/method/DISTILL-METHOD-v004.md)
    - Accepted semantics and design-point details.
 3. [Current Task Canvas](task_canvas.md)
    - Current problem, verified facts, active proposal, and next decision.
@@ -16,6 +16,11 @@ not the current design authority.
 Stop after these three unless a concrete question requires deeper evidence.
 
 ## Drill Down By Question
+
+- Current three-expert integration and server commands:
+  [Recovery MoE Integration](plans/g1_recovery_moe_integration.md)
+- Current three-expert acceptance:
+  [Recovery Checklist](checklists/g1_recovery_moe_integration.md)
 
 - Current non-nominal transition repair plan:
   [DAgger Distribution Repair](plans/non_nominal_transition_dagger_repair.md)
@@ -53,11 +58,15 @@ accumulation.
 
 ## Current Method In One Sentence
 
-Use velocity intent to select a 99-D StandHeight or Walk teacher, train two
-role-specialized experts inside one MoE student, and deploy one checkpoint whose
-routing follows the same intent and target-height contract.
+Use recovery-first physical routing followed by velocity intent to select a
+Walk, StandHeight or Recovery expert in one 99-D MoE student. Explicit unit
+adapters preserve each teacher's input semantics. The original two-expert route
+remains available; the three-expert student has not been formally trained.
 
 ## Current Boundary
+
+The current cursor is recorded in `task_canvas.md` and the recovery checklist.
+The entries below are retained two-expert baseline boundaries.
 
 - Existing 98-D standing and walking teachers are legacy sources.
 - The `G1StandHeight` task, explicit 98-D to 99-D actor adapter, and unified

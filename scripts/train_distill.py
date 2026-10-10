@@ -73,6 +73,7 @@ _OWNER_COMMAND_SAMPLE_FILTERS = {
 _HEIGHT_OWNER_COMMAND_SAMPLE_FILTERS = {
     "G1WalkHeight": "active",
     "G1StandHeight": "inactive",
+    "G1Recovery": "inactive",
 }
 _DISTILL_TASK_NAME_HINTS = frozenset(
     {*_OWNER_COMMAND_SAMPLE_FILTERS, *_HEIGHT_OWNER_COMMAND_SAMPLE_FILTERS}
@@ -174,6 +175,9 @@ def _workflow_role_cfg(cfg: DictConfig, entry: dict[str, Any]) -> DictConfig:
             "student": OmegaConf.to_container(cfg.student, resolve=True),
             "training": {
                 "device": OmegaConf.select(cfg, "training.device"),
+                "recovery_integration": bool(
+                    OmegaConf.select(cfg, "training.recovery_integration", default=False)
+                ),
                 "collect_num_samples": int(
                     entry.get(
                         "collect_num_samples",
@@ -430,6 +434,8 @@ def _load_student_init_checkpoint(
     )
     return {
         "path": str(checkpoint_path),
+        "checkpoint_sha256": file_sha256(checkpoint_path),
+        "recovery_migration": runtime_cfg.get("recovery_migration"),
         "agent_steps": int(checkpoint.get("agent_steps", loaded_student.agent_steps)),
         "optimizer_requested": bool(resume_optimizer),
         "optimizer_loaded": bool(resume_optimizer)
@@ -460,6 +466,14 @@ def _teacher_metadata(cfg: DictConfig, teacher_checkpoint: str | Path) -> dict[s
         }
     )
     return metadata
+
+
+def _recovery_routing_contract(cfg):
+    if not bool(OmegaConf.select(cfg, "training.recovery_integration", default=False)):
+        return None
+    from unilab.algos.torch.distill.recovery_integration import RECOVERY_ROUTING_CONTRACT
+
+    return dict(RECOVERY_ROUTING_CONTRACT)
 
 
 def _distill_runtime_cfg(
@@ -524,12 +538,20 @@ def _distill_runtime_cfg(
             )
         ),
         **_student_runtime_cfg(cfg),
+        "recovery_integration": bool(
+            OmegaConf.select(cfg, "training.recovery_integration", default=False)
+        ),
+        "recovery_routing_contract": _recovery_routing_contract(cfg),
+        "recovery_teacher_sha256": OmegaConf.select(cfg, "training.recovery_teacher_sha256"),
         "teacher_obs_dim": int(cfg.teacher.obs_dim),
     }
     if dataset_path is not None:
         payload["dataset_path"] = str(dataset_path)
     if student_init_metadata:
         payload["student_init_checkpoint_path"] = str(student_init_metadata["path"])
+        payload["student_init_checkpoint_sha256"] = student_init_metadata.get("checkpoint_sha256")
+        if student_init_metadata.get("recovery_migration"):
+            payload["recovery_migration"] = student_init_metadata["recovery_migration"]
         payload["student_init_agent_steps"] = int(student_init_metadata["agent_steps"])
         payload["student_init_optimizer_requested"] = bool(
             student_init_metadata.get("optimizer_requested", False)
@@ -1249,7 +1271,7 @@ def _require_teacher_policy_collection_route(cfg: DictConfig) -> None:
     task_name = str(OmegaConf.select(cfg, "training.task_name"))
     teacher_task_name = _teacher_task_name_for_collection(cfg)
     legacy_tasks = {"G1WalkFlat", "G1StandStill"}
-    height_tasks = {"G1WalkHeight", "G1StandHeight"}
+    height_tasks = {"G1WalkHeight", "G1StandHeight", "G1Recovery"}
     if task_name not in legacy_tasks | height_tasks:
         raise ValueError(
             "teacher target collection only supports explicit G1 flat/stand or "
@@ -1282,11 +1304,16 @@ def _require_teacher_policy_collection_route(cfg: DictConfig) -> None:
         != "identity"
     ):
         raise ValueError("teacher target collection requires identity teacher projection")
+    required_student_projection = (
+        "g1_recovery_to_walk_99_v1" if task_name == "G1Recovery" else "identity"
+    )
     if (
         str(OmegaConf.select(cfg, "training.collect_student_projection", default="identity"))
-        != "identity"
+        != required_student_projection
     ):
-        raise ValueError("teacher target collection requires identity student projection")
+        raise ValueError(
+            f"teacher target collection requires {required_student_projection} student projection"
+        )
     if OmegaConf.select(cfg, "training.collect_student_drop_index") is not None:
         raise ValueError("teacher target collection does not support collect_student_drop_index")
     if OmegaConf.select(cfg, "training.collect_action_seed") is not None:
@@ -1376,6 +1403,15 @@ def run_collect_dataset(
                 f"cfg.student.action_dim={int(cfg.student.action_dim)}"
             )
         rollout_policy = loaded_rollout_policy.policy
+        if bool(OmegaConf.select(cfg, "training.recovery_integration", default=False)):
+            from unilab.algos.torch.distill.recovery_integration import (
+                RoleExpertPolicy,
+                validate_recovery_student,
+            )
+
+            validate_recovery_student(rollout_policy, loaded_rollout_policy.distill_runtime_cfg)
+            role = str(OmegaConf.select(cfg, "training.collect_role_label"))
+            rollout_policy = RoleExpertPolicy(rollout_policy, role)
 
     if create_env_fn is None:
         ensure_registries()
@@ -1715,7 +1751,44 @@ def run_single_entry_workflow(
     if execution_mode == "legacy" and persistent_scenario_collector_factory is not None:
         raise ValueError("legacy execution_mode forbids persistent_scenario_collector_factory")
 
+    if (
+        bool(OmegaConf.select(cfg, "training.recovery_integration", default=False))
+        and execution_mode != "legacy"
+    ):
+        raise ValueError("recovery integration currently requires execution_mode=legacy")
     entries = _workflow_role_entries(cfg)
+    recovery_enabled = bool(OmegaConf.select(cfg, "training.recovery_integration", default=False))
+    has_recovery = any(entry.get("role") == "recovery" for entry in entries)
+    if has_recovery != recovery_enabled:
+        raise ValueError("recovery role and recovery_integration must be activated together")
+    if recovery_enabled:
+        from unilab.algos.torch.distill.recovery_integration import validate_recovery_student
+
+        init_path = _resolve_optional_checkpoint_path(
+            OmegaConf.select(cfg, "training.offline_init_checkpoint"),
+            field_name="training.offline_init_checkpoint",
+        )
+        if init_path is None:
+            raise ValueError(
+                "recovery integration requires an explicit migrated student checkpoint"
+            )
+        loaded_init = load_distillation_student_policy(init_path, device="cpu")
+        validate_recovery_student(loaded_init.policy, loaded_init.distill_runtime_cfg)
+        _validate_student_init_runtime_cfg(
+            cfg, runtime_cfg=loaded_init.distill_runtime_cfg, checkpoint_path=init_path
+        )
+        if (
+            cfg.student.num_experts != 3
+            or str(cfg.algo.expert_behavior_loss_source) != "role"
+            or float(cfg.algo.command_intent_loss_coef) != 0.0
+            or dict(cfg.algo.role_expert_targets) != {"walk": 0, "stand_height": 1, "recovery": 2}
+        ):
+            raise ValueError("recovery integration requires the three-role supervision contract")
+        recovery_entry = next(entry for entry in entries if entry["role"] == "recovery")
+        recovery_teacher = _workflow_path(recovery_entry["teacher_checkpoint_path"])
+        expected_hash = OmegaConf.select(cfg, "training.recovery_teacher_sha256")
+        if expected_hash is None or file_sha256(recovery_teacher) != str(expected_hash):
+            raise ValueError("recovery teacher hash does not match the selected checkpoint")
     configured_run_dir = OmegaConf.select(cfg, "training.workflow.run_dir")
     if configured_run_dir in (None, ""):
         run_dir = (
@@ -1983,6 +2056,18 @@ def run_single_entry_workflow(
                 _iteration,
                 output_path,
                 workflow_scenario=scenario.name,
+            )
+        if scenario.name == "recovery_to_stand":
+            from unilab.algos.torch.distill.recovery_workflow import (
+                collect_recovery_workflow_scenario,
+            )
+
+            return collect_recovery_workflow_scenario(
+                cfg,
+                role_cfgs,
+                checkpoint_path,
+                output_path,
+                performance_clock=performance_clock,
             )
         if scenario.name != "walk_to_stop":
             raise ValueError(f"unsupported transition workflow scenario: {scenario.name!r}")

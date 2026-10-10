@@ -1,0 +1,63 @@
+# @package _global_
+defaults:
+  - /workflow/g1_stand_height_walk
+  - _self_
+student:
+  num_experts: 3
+algo:
+  command_intent_loss_coef: 0.0
+  expert_behavior_loss_source: role
+  role_expert_targets:
+    walk: 0
+    stand_height: 1
+    recovery: 2
+training:
+  task_name: G1StandHeightWalkRecovery
+  recovery_integration: true
+  recovery_teacher_sha256: 9f9fa902e6228c93e26e319505bfec584632b38129b35471d04038ad64047bbd
+  offline_init_checkpoint: ${oc.env:UNILAB_G1_RECOVERY_MOE_INIT}
+  offline_resume_optimizer: false
+  offline_repeat_dataset: true
+  offline_shuffle: true
+  offline_balance_key: role
+  offline_balanced_labels: [walk, stand_height, recovery]
+  workflow:
+    enabled: true
+    schema_version: 3
+    execution_mode: legacy
+    roles:
+      - role: walk
+        task: g1_walk_height_nominal/mujoco
+        teacher_checkpoint_path: ${oc.env:UNILAB_G1_WALK_HEIGHT_TEACHER}
+        dataset_path: ""
+      - role: stand_height
+        task: g1_stand_height/mujoco
+        teacher_checkpoint_path: ${oc.env:UNILAB_G1_STAND_HEIGHT_TEACHER}
+        dataset_path: ""
+      - role: recovery
+        task: g1_recovery/mujoco
+        teacher_checkpoint_path: ${oc.env:UNILAB_G1_RECOVERY_TEACHER}
+        dataset_path: ""
+    scenarios:
+      - name: walk_flat
+        kind: role
+        source_roles: [walk]
+        quota: 0.35
+      - name: static_stand
+        kind: role
+        source_roles: [stand_height]
+        quota: 0.20
+      - name: walk_to_stop
+        kind: transition
+        source_roles: [walk, stand_height]
+        quota: 0.15
+      - name: supine_recovery
+        kind: role
+        source_roles: [recovery]
+        quota: 0.20
+      - name: recovery_to_stand
+        kind: transition
+        source_roles: [recovery, stand_height]
+        quota: 0.10
+    dagger_balanced_labels: [walk_flat, static_stand, walk_to_stop, supine_recovery, recovery_to_stand]
+    dagger_min_transition_replay_labels: [walk_to_stop, recovery_to_stand]

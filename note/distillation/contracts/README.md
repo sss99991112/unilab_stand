@@ -6,13 +6,14 @@ This registry is the only default contract entrypoint.
 
 | Contract | Status | Scope | Supersedes |
 | --- | --- | --- | --- |
-| [DISTILL-METHOD-v003](active/method/DISTILL-METHOD-v003.md) | active | G1 ordered Walk -> nominal settle -> StandHeight tracking distillation | DISTILL-METHOD-v002 |
+| [DISTILL-METHOD-v004](active/method/DISTILL-METHOD-v004.md) | active | G1 Walk / StandHeight / Recovery three-expert integration, legacy paths preserved | DISTILL-METHOD-v003 |
 | [DISTILL-TRAIN-v003](active/training/DISTILL-TRAIN-v003.md) | active | Integrated persistent DAgger runtime; promotion deferred; legacy default | DISTILL-TRAIN-v002 |
 
 ## History
 
 | Contract | Status | Scope |
 | --- | --- | --- |
+| [DISTILL-METHOD-v003](history/method/DISTILL-METHOD-v003.md) | superseded | Ordered two-teacher Walk / StandHeight method; preserved implementation |
 | [DISTILL-METHOD-v001](history/method/DISTILL-METHOD-v001.md) | superseded | G1 standing, walking, and future height-control multi-teacher distillation |
 | [DISTILL-METHOD-v002](history/method/DISTILL-METHOD-v002.md) | superseded | G1 StandHeight and Walk two-teacher command-intent MoE distillation with atomic stop/height switching |
 | [DISTILL-TRAIN-v001](history/training/DISTILL-TRAIN-v001.md) | superseded | Single-entry, resumable multi-role training workflow |

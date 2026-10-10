@@ -10,3 +10,4 @@ from .joystick import (
     G1WalkRoughCfg,
 )
 from .recovery import G1RecoveryCfg, G1RecoveryEnv
+from .recovery_combined import G1RecoveryCombinedCfg, G1RecoveryCombinedEnv

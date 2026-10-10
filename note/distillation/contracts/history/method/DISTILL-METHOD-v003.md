@@ -1,6 +1,6 @@
 ---
 contract_id: DISTILL-METHOD-v003
-status: active
+status: superseded
 effective_date: 2026-07-27
 updated_date: 2026-07-27
 supersedes: DISTILL-METHOD-v002

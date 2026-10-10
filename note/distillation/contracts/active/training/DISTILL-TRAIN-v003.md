@@ -1,9 +1,9 @@
 contract_id: DISTILL-TRAIN-v003
 status: active
 effective_date: 2026-07-17
-updated_date: 2026-07-27
+updated_date: 2026-10-10
 supersedes: DISTILL-TRAIN-v002
-method_contract: DISTILL-METHOD-v003
+method_contract: DISTILL-METHOD-v004
 concept_figure: note/architecture/concept/03_g1_multiteacher_distillation_method.data.json
 integration_status: complete
 promotion_status: deferred
@@ -82,3 +82,11 @@ checkpoint identity mismatch fails closed.
   unchanged.
 - Separate live gates: RT-10 physical acceptance and optional Motrix runtime
   remain outside this contract's completed integration claim.
+
+## Recovery Integration Binding (2026-10-10)
+
+The active method is v004. The outer-loop, immutable sources, synchronization
+barrier and legacy default above are unchanged. The new three-role recovery
+profile currently supports legacy execution only; its persistent mode is
+rejected before writes. Existing two-role profiles retain their prior runtime
+choices. This binding does not authorize or prove a formal training run.

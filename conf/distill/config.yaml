@@ -71,6 +71,7 @@ training:
   offline_batch_size: 256
   offline_max_updates: 1
   offline_init_checkpoint: null
+  recovery_integration: false
   offline_resume_optimizer: true
   offline_checkpoint: null
   offline_repeat_dataset: false

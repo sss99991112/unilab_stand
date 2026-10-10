@@ -1,0 +1,83 @@
+from pathlib import Path
+
+import pytest
+import scripts.train_distill as train_distill
+from hydra import compose, initialize_config_dir
+from hydra.core.global_hydra import GlobalHydra
+from omegaconf import OmegaConf
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _compose(monkeypatch, workflow):
+    for name in [
+        "UNILAB_G1_WALK_HEIGHT_TEACHER",
+        "UNILAB_G1_STAND_HEIGHT_TEACHER",
+        "UNILAB_G1_RECOVERY_TEACHER",
+        "UNILAB_G1_RECOVERY_MOE_INIT",
+    ]:
+        monkeypatch.setenv(name, "/tmp/source.pt")
+    GlobalHydra.instance().clear()
+    with initialize_config_dir(config_dir=str(ROOT / "conf/distill"), version_base="1.3"):
+        return compose("config", overrides=["workflow=" + workflow])
+
+
+def test_three_expert_profile_is_opt_in_and_old_profile_unchanged(monkeypatch):
+    new = _compose(monkeypatch, "g1_stand_height_walk_recovery")
+    old = _compose(monkeypatch, "g1_stand_height_walk")
+    assert new.student.num_experts == 3 and old.student.num_experts == 2
+    assert new.training.recovery_integration and not old.training.recovery_integration
+    assert new.algo.expert_behavior_loss_source == "role"
+    assert new.algo.command_intent_loss_coef == 0
+    assert new.algo.role_expert_targets.recovery == 2
+    assert new.training.workflow.schema_version == 3
+    assert new.training.offline_resume_optimizer is False
+    assert new.training.offline_repeat_dataset is True
+    assert new.training.offline_balance_key == "role"
+    assert list(new.training.offline_balanced_labels) == ["walk", "stand_height", "recovery"]
+    assert all(entry.dataset_path == "" for entry in new.training.workflow.roles)
+    assert len(new.training.workflow.scenarios) == 5
+    assert sum(s.quota for s in new.training.workflow.scenarios) == pytest.approx(1)
+    assert old.training.workflow.transition_nominal_settle_steps == 100
+    runtime = train_distill._distill_runtime_cfg(new, distill_source="test")
+    assert runtime["recovery_integration"] is True
+
+
+def test_recovery_role_owner_uses_exact_unassisted_v2_semantics(monkeypatch):
+    cfg = _compose(monkeypatch, "g1_stand_height_walk_recovery")
+    entry = next(e for e in train_distill._workflow_role_entries(cfg) if e["role"] == "recovery")
+    role = train_distill._workflow_role_cfg(cfg, entry)
+    train_distill._require_teacher_policy_collection_route(role)
+    assert role.training.task_name == "G1Recovery"
+    assert role.training.recovery_integration is True
+    assert role.teacher.task_name == "G1Recovery"
+    assert role.env.assistance.stage == 2
+    assert role.env.recovery.height_gated_upright
+    assert role.env.recovery.progress_floor_height == 0.06
+    assert role.env.commands.default_height == 0.754
+    assert role.env.control_config.action_scale == 1
+    from unilab.base.registry import apply_cfg_overrides
+    from unilab.envs.locomotion.g1.recovery import G1RecoveryCfg
+    from unilab.training import BackendAdapter
+
+    env_cfg = G1RecoveryCfg()
+    apply_cfg_overrides(
+        env_cfg,
+        BackendAdapter(role, root_dir=ROOT, algo_name="distill").build_task_env_cfg_override(),
+    )
+    assert env_cfg.reward_config.gait_frequency == 0
+    assert env_cfg.reward_config.feet_phase_tracking_sigma == 0.04
+
+
+def test_recovery_workflow_rejects_unimplemented_persistent_route_before_io(monkeypatch):
+    cfg = _compose(monkeypatch, "g1_stand_height_walk_recovery")
+    cfg.training.workflow.execution_mode = "persistent_async"
+    with pytest.raises(ValueError, match="execution_mode=legacy"):
+        train_distill.run_single_entry_workflow(cfg)
+
+
+def test_partial_recovery_activation_is_rejected_before_artifact_io(monkeypatch):
+    cfg = _compose(monkeypatch, "g1_stand_height_walk_recovery")
+    cfg.training.recovery_integration = False
+    with pytest.raises(ValueError, match="activated together"):
+        train_distill.run_single_entry_workflow(cfg)

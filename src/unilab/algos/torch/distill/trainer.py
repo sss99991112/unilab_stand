@@ -497,7 +497,7 @@ class BehaviorDistillationTrainer:
         batch_size = int(student_action.shape[0])
         num_experts = int(expert_actions.shape[1])
         command_targets = self._target_indices_from_labels(
-            labels=command_intents,
+            labels=None if self.expert_behavior_loss_source == "role" else command_intents,
             targets=self.command_intent_expert_targets,
             batch_size=batch_size,
             num_experts=num_experts,

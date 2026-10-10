@@ -1406,6 +1406,21 @@ def create_distill_playback_session(
                 is_moe=is_moe_student,
             )
             routing_targets = _distill_command_intent_targets(cfg, runtime_cfg)
+            recovery_policy = None
+            if bool(runtime_cfg.get("recovery_integration", False)):
+                from unilab.algos.torch.distill.recovery_integration import (
+                    RecoveryRoutedPolicy,
+                    validate_recovery_env,
+                    validate_recovery_student,
+                )
+
+                validate_recovery_student(student.policy, runtime_cfg)
+                if task_name != "G1RecoveryCombined":
+                    raise ValueError(
+                        "recovery checkpoint playback requires task=g1_recovery_combined"
+                    )
+                validate_recovery_env(env)
+                recovery_policy = RecoveryRoutedPolicy(student.policy, env)
             routing_xy_threshold = float(
                 _cfg_select(cfg, "interactive.distill_command_xy_threshold", 0.05)
             )
@@ -1437,7 +1452,21 @@ def create_distill_playback_session(
                     expected_experts: torch.Tensor | None = None
                     routing_applied = False
 
-                    if routing_mode in {"hard", "bias"}:
+                    if recovery_policy is not None:
+                        from unilab.algos.torch.distill.recovery_integration import (
+                            recovery_expert_indices,
+                        )
+
+                        expected_experts = torch.as_tensor(
+                            recovery_expert_indices(env.state.info), device=obs_tensor.device
+                        )
+                        action = recovery_policy(obs_tensor)
+                        selected = expected_experts
+                        route_probs = torch.nn.functional.one_hot(
+                            expected_experts, num_classes=3
+                        ).to(route_probs.dtype)
+                        routing_applied = True
+                    elif routing_mode in {"hard", "bias"}:
                         commands = _distill_commands_from_env(
                             env,
                             batch_size=int(obs_tensor.shape[0]),

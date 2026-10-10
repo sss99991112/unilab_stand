@@ -49,6 +49,8 @@
           "files": [
             {"id":"DT-SRC-021","path":"src/unilab/algos/torch/distill/workflow.py","sourceLine":123,"role":"workflow stage owner","functions":["RoleArtifactSpec","preflight_role_artifacts()","run_bootstrap_workflow()","run_multirole_dagger_workflow()","_validate_workflow_scenarios()","fork_workflow_run()"]},
             {"id":"DT-SRC-047","path":"conf/distill/workflow/g1_stand_height_walk.yaml","sourceLine":1,"role":"v002 99-D two-role/two-expert and 3x3 transition-grid workflow owner","functions":[]},
+            {"id":"DT-SRC-REC-01","path":"conf/distill/workflow/g1_stand_height_walk_recovery.yaml","sourceLine":1,"role":"v004 opt-in three-expert workflow","functions":[]},
+            {"id":"DT-SRC-REC-02","path":"src/unilab/algos/torch/distill/recovery_workflow.py","sourceLine":1,"role":"recovery handover scenario","functions":["collect_recovery_workflow_scenario()"]},
             {"id":"DT-SRC-022","path":"tests/algos/test_distill_workflow.py","sourceLine":1,"role":"workflow semantic fixtures","functions":[]},
             {"id":"DT-SRC-034","path":"src/unilab/algos/torch/distill/async_runtime.py","sourceLine":20,"role":"persistent collector request/result interface","functions":["validate_dagger_collect_result()","PersistentDaggerCollectorRunner.collect()"]},
             {"id":"DT-SRC-035","path":"src/unilab/algos/torch/distill/persistent_runtime.py","sourceLine":31,"role":"shared resident student owner","functions":["PersistentDistillationRuntime.activate_checkpoint()","PersistentDistillationRuntime.collect()","PersistentDistillationRuntime.close()"]},
@@ -90,6 +92,7 @@
           "objects": ["DistillationTeacherSpec", "LoadedTeacherPolicy", "98-D to 99-D actor adapter", "AsyncRunner", "DoubleBufferOffPolicyRunner", "one_tick replay prefetch", "29-D action"],
           "files": [
             {"id":"DT-SRC-003","path":"src/unilab/algos/torch/distill/teacher.py","sourceLine":117,"role":"teacher checkpoint contract","functions":["validate_sac_teacher_checkpoint_contract()","load_sac_teacher_policy()","LoadedTeacherPolicy.forward()"]},
+            {"id":"DT-SRC-REC-03","path":"src/unilab/algos/torch/distill/g1_observation_adapter.py","sourceLine":1,"role":"explicit 99-D gyro/joint-speed unit adapter","functions":["recovery_to_walk_obs()","walk_to_recovery_obs()"]},
             {"id":"DT-SRC-048","path":"src/unilab/algos/torch/offpolicy/checkpoint_adapter.py","sourceLine":61,"role":"explicit 98-D to 99-D actor-only adapter","functions":["adapt_g1_height_actor_state()","adapt_g1_height_normalizer_state()","materialize_g1_height_actor_checkpoint()","load_g1_height_actor_warm_start()"]},
             {"id":"DT-SRC-049","path":"tests/algos/test_offpolicy_checkpoint_adapter.py","sourceLine":1,"role":"adapter equivalence and isolation contracts","functions":[]},
             {"id":"DT-SRC-055","path":"scripts/train_offpolicy.py","sourceLine":184,"role":"StandHeight SAC async runner assembly","functions":["build_runner()"]},
@@ -119,6 +122,7 @@
             {"id":"DT-SRC-004","path":"src/unilab/algos/torch/distill/collector.py","sourceLine":580,"role":"live collection and transition-grid owner","functions":["collect_distillation_dataset_from_env()","collect_transition_distillation_dataset_from_env()","_build_transition_case_assignment()","_set_transition_input_rows()"]},
             {"id":"DT-SRC-005","path":"scripts/train_distill.py","sourceLine":1324,"role":"99-D collection connector and index-96 height guard","functions":["run_collect_dataset()","_require_collected_target_height_contract()"]},
             {"id":"DT-SRC-050","path":"conf/distill/task/g1_stand_height/mujoco.yaml","sourceLine":1,"role":"StandHeight 99-D inactive role profile","functions":[]},
+            {"id":"DT-SRC-REC-04","path":"src/unilab/envs/locomotion/g1/recovery_combined.py","sourceLine":1,"role":"physical latch and supine reset","functions":["update_recovery_route()","G1RecoveryCombinedEnv"]},
             {"id":"DT-SRC-051","path":"conf/distill/task/g1_walk_height_nominal/mujoco.yaml","sourceLine":1,"role":"Walk 99-D nominal-height active role profile","functions":[]}
           ],
           "mainRoute": [

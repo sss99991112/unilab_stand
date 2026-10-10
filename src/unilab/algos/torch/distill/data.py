@@ -467,7 +467,13 @@ def _abort_for_native_capture() -> None:
     os.abort()
 
 
-_TRANSITION_SCENARIOS = {"static_stand", "walk_flat", "walk_to_stop"}
+_TRANSITION_SCENARIOS = {
+    "static_stand",
+    "walk_flat",
+    "walk_to_stop",
+    "supine_recovery",
+    "recovery_to_stand",
+}
 
 
 def _validate_scenario_labels(
@@ -589,7 +595,7 @@ def _validate_transition_fields(
         num_samples=num_samples,
     )
     transition_mask = torch.tensor(
-        [label == "walk_to_stop" for label in validated_labels],
+        [label in {"walk_to_stop", "recovery_to_stand"} for label in validated_labels],
         dtype=torch.bool,
         device=validated_ages.device,
     )
@@ -866,8 +872,8 @@ def annotate_distillation_dataset_scenario(
                 f"dataset scenario labels do not match requested scenario {scenario!r}"
             )
         return dataset
-    if scenario == "walk_to_stop":
-        raise ValueError("walk_to_stop source must already contain transition fields")
+    if scenario in {"walk_to_stop", "recovery_to_stand"}:
+        raise ValueError(f"{scenario} source must already contain transition fields")
 
     commands = dataset.commands
     if commands is None:

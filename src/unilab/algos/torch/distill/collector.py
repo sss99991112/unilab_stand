@@ -181,6 +181,10 @@ def project_student_obs(
     source_obs = np.asarray(source_obs, dtype=np.float32)
     if projection == "identity":
         student_obs = source_obs
+    elif projection == "g1_recovery_to_walk_99_v1":
+        from .g1_observation_adapter import recovery_to_walk_obs
+
+        student_obs = recovery_to_walk_obs(source_obs)
     elif projection == "drop_index":
         if student_drop_index is None:
             raise ValueError("student_drop_index is required when student_projection='drop_index'")
@@ -1087,6 +1091,7 @@ def collect_distillation_dataset_from_env(
     command_yaw_threshold: float = 0.05,
     max_env_steps: int | None = None,
     role_label: str | None = None,
+    role_selector: Callable[[Mapping[str, Any]], tuple[str, ...]] | None = None,
     metadata: Mapping[str, Any] | None = None,
     initial_reset: tuple[Any, Any] | None = None,
     performance_clock: Callable[[], float] | None = None,
@@ -1149,6 +1154,7 @@ def collect_distillation_dataset_from_env(
     command_chunks: list[torch.Tensor] = []
     target_height_chunks: list[torch.Tensor] = []
     command_intent_chunks: list[str] = []
+    row_role_labels: list[str] = []
     env_steps = 0
     collected_count = 0
     command_seen_samples = 0
@@ -1221,6 +1227,9 @@ def collect_distillation_dataset_from_env(
         if command_sample_filter != "none":
             command_seen_samples += int(row_mask.shape[0])
             command_selected_samples += int(np.count_nonzero(row_mask))
+        current_roles = None if role_selector is None else role_selector(current_info)
+        if current_roles is not None and len(current_roles) != teacher_np.shape[0]:
+            raise ValueError("role_selector must return one label per pre-action row")
         label_actions = None
         if teacher_policy is not None:
             with _performance_span(performance, "teacher_inference"):
@@ -1286,6 +1295,8 @@ def collect_distillation_dataset_from_env(
                     target_height_chunks.append(
                         torch.as_tensor(selected_target_height[:take], dtype=torch.float32)
                     )
+                if current_roles is not None:
+                    row_role_labels.extend(np.asarray(current_roles)[row_mask][:take].tolist())
                 collected_count += int(take)
             if actions is not None:
                 action_abs_max = max(action_abs_max, float(np.max(np.abs(actions))))
@@ -1372,9 +1383,13 @@ def collect_distillation_dataset_from_env(
                 torch.cat(target_height_chunks, dim=0) if target_height_chunks else None
             ),
             command_intents=(tuple(command_intent_chunks) if command_intent_chunks else None),
-            role_labels=(normalized_role_label,) * int(num_samples)
-            if normalized_role_label is not None
-            else None,
+            role_labels=(
+                tuple(row_role_labels)
+                if role_selector is not None
+                else (normalized_role_label,) * int(num_samples)
+                if normalized_role_label is not None
+                else None
+            ),
         )
     return _attach_collector_performance(
         dataset,

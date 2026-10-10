@@ -2276,3 +2276,94 @@ or policy-quality conclusion is authorized.
   r1/r2/r3 artifact, MuJoCo policy run, or training run changed. Implementation
   and deterministic integration are PASS; new-fork training and unchanged
   physical acceptance remain unexecuted.
+
+
+## E122: Recovery expert integration preparation (2026-10-10)
+
+- Branch `codex/g1-recovery-moe-integration`, baseline HEAD `cd9f895c`.
+  At the end of initial preparation, source changes were local and uncommitted;
+  no push, PR or formal training had occurred. The user subsequently selected
+  GitHub branch synchronization; see the plan's code synchronization section.
+- User explicitly selected a third MoE expert through DAgger. Active method
+  moved from v003 to v004; inherited training lifecycle remains TRAIN-v003.
+- Existing local 99-D two-expert student SHA-256:
+  `4d9eed26b39a875a2475289f84a40949a95c3a7d5a618b7110f90df051fae6fe`.
+  Selected recovery teacher remains
+  `9f9fa902e6228c93e26e319505bfec584632b38129b35471d04038ad64047bbd`.
+- `extend_unilab_g1_recovery_moe.py` created
+  `.local-build/g1_recovery_moe/initial_3expert_canonical.pt`; experts 0/1 are
+  tensor-equivalent, expert 2 is untrained, optimizer is fresh. Parent identity
+  and migration metadata persist into later student checkpoints.
+- Unit mismatch located at `G1WalkEnv._uses_walk_observation_profile`: Recovery
+  uses raw gyro/joint speed; Walk uses 0.25/0.05. The explicit 99-D adapter
+  repairs teacher queries and canonical student samples. Roundtrip and action
+  parity are covered by deterministic tests.
+- First live combined-env reset probe exposed false initial recovery routing;
+  supine reset now selects expert 2 before the first action. The first policy
+  reference probe without unit conversion did not hand over; its report is
+  retained at `reference_handover_seed1.json`.
+- Final reference live command:
+  `uv run --no-sync python scripts/deploy/check_unilab_g1_recovery_integration.py
+  --student-checkpoint stand_height_walk_ordered_b_r4_dagger_iteration_1.pt
+  --recovery-teacher /Users/sss9999/enbodied_intelligence/unilab/2026-10-09_19-37-31_mujoco/model_12000.pt
+  --steps 750 --seed 1
+  --output .local-build/g1_recovery_moe/reference_handover_guard_seed1.json`.
+  Observed: expert 2 for 450 steps, expert 1 for 300, handover at 9.0 s,
+  final height 0.738295 m, terminated=false, normal 15 s timeout. This uses
+  the original recovery teacher and old standing expert; it is reference
+  connectivity evidence, not a trained unified-student result.
+- The real `run_collect_dataset` teacher-policy route produced 200 finite
+  `(99,99,29)` samples, all `recovery`; inverse unit conversion equals cached
+  native teacher observations. Artifact:
+  `.local-build/g1_recovery_moe/recovery_role_teacher_200.pt`.
+  Preliminary zero-action/config-failure probe artifacts are retained and are
+  not teacher-label acceptance.
+- Final impact suite: eight files covering new integration, existing workflow,
+  playback, recovery and distillation; `171 passed, 9 deselected, 6 warnings
+  in 2.54s`. The exact excluded names are runtime_trace*, serialization callable
+  corruption, serialization IO failure, command intent corruption, and the
+  multitask cached-target trace test. All nine failed identically in an
+  unmodified HEAD archive under `/tmp/unilab-recovery-baseline`; they are
+  baseline diagnostic trace failures, not a new integration pass.
+- `ruff check --no-cache`, 14-file `ruff format --check`, `git diff --check`,
+  and `node note/architecture/auxiliary/atlas_app/check_distillation_atlas.mjs`
+  passed. Atlas output: 9 runtime modules, 11 method modules, 6 concept nodes.
+  Figure text/source mappings changed; browser visual inspection was not run.
+- Public `uv run --no-sync train --algo distill --task g1_walk_height_nominal
+  --sim mujoco workflow=g1_stand_height_walk_recovery training.device=cuda:0
+  --cfg job --resolve` passed without learning. Complete resolved config is
+  `/tmp/unilab-g1-recovery-moe-resolved.yaml`. New Bootstrap repeats balanced
+  roles; DAgger retains scenario quotas and the existing cumulative outer loop.
+- Final source review repaired role flag propagation and command cancellation:
+  the physical guard now preserves raw requests and constructs effective
+  commands separately, so an explicit stop during recovery does not resurrect
+  stale walking commands. Native teacher observation units and pre-action labels
+  are retained in handover datasets.
+- No full repository gate, CUDA run, formal three-expert training, student
+  physical promotion, persistent recovery support or real-robot deployment is
+  claimed. The server SSH endpoint is unavailable in this session; historical
+  Walk/StandHeight teacher paths require server-side verification.
+
+- Portable source patch: `.local-build/g1_recovery_moe/integration.patch`, no
+  model payloads, validated with `git apply --check` against archived HEAD
+  files. Exact-diff final review found no remaining P0/P1 issue after fixing
+  command cancellation, role propagation and native teacher units. The
+  untrained unified-student and server-execution boundaries remain open.
+
+
+## E123: GitHub delivery preparation (2026-10-10)
+
+- User selected GitHub branch synchronization instead of applying a patch. The
+  run plan now gives fetch/switch/fast-forward instructions for
+  `codex/g1-recovery-moe-integration`. Model and local probe artifacts remain
+  outside the source commit; no formal training or PR is part of this delivery.
+- GitHub SSH port 22 was unavailable. Read-only branch discovery succeeded over
+  GitHub's SSH port 443 with strict verification using the existing trusted
+  `github.com` host key; the new delivery branch did not yet exist remotely.
+- Required pre-commit `make check` was attempted on an isolated copy of the exact
+  source diff with the existing interpreter. Ruff formatting and lint passed in
+  that copy. The type step could not launch `mypy` because it is absent from the
+  current environment, so the complete gate is NOT PASS. No broad formatting
+  changes from the isolated copy were applied to the source working tree.
+- The previously recorded 171 passing impact tests remain the bounded behavior
+  evidence. Uploading source does not qualify the untrained third expert.
