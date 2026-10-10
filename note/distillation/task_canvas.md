@@ -19,16 +19,22 @@ corruption remains unconfirmed; the native writer is unknown. Later outer rounds
 and unified-student physical acceptance remain pending.
 The user explicitly authorized proceeding directly with eight additional rounds
 from this saved student, without the proposed manual pre-evaluation. The opt-in
-continuation and fresh-process offline path are contract-verified (E128); server
-launch remains pending.
+continuation and fresh-process offline path are contract-verified (E128). Server
+run `20261010-193512_recovery_dagger8` reached round 4, then the update child exited
+with code 1 during load_distillation_dataset (E129). The user then replayed the
+exact preparation/load path in a fresh process: LOAD_OK rows=2424832. The original
+inner exception remains missing and the failure is not reproduced (E130).
+A verified saved-update recovery entrypoint completes original round 4 from its
+existing aggregate, then forks to train only the four remaining rounds; local
+contracts pass, server replay/update and continuation remain pending.
 
 | Design point | Status | Evidence / remaining boundary |
 | --- | --- | --- |
 | DISTILL-DP-01 teachers | selected sources | Recovery hash verified; Walk/StandHeight server source paths recorded, bytes unavailable locally |
 | DISTILL-DP-02 routing | deterministic + bounded live | Physical latch, stable window, reset and nominal settling; seed-1 reference handover at 9.0 s |
-| DISTILL-DP-03 role data | server saved-source replay PASS | 1114112 rows build/save/reload in a fresh CPU process; exact three-role/five-scenario fingerprints |
-| DISTILL-DP-04 student | server first update completed | Bootstrap plus 10281 cached-target updates; new trained checkpoint awaits physical evaluation |
-| DISTILL-DP-05 DAgger | eight-round continuation ready | E128: saved-update seed, cumulative mixed roles and eight fresh-process toy rounds pass; formal server run pending |
+| DISTILL-DP-03 role data | server fresh round-4 load PASS | E130: 2424832 rows load after trainer preparation; original failed exception and physical efficacy unconfirmed |
+| DISTILL-DP-04 student | server reached new round 4 | Prior three new-round updates completed by workflow order; checkpoint bytes and physical quality unavailable locally |
+| DISTILL-DP-05 DAgger | recovery continuation prepared | E130: current aggregate/hash/parent checks, real isolated repair update and four-round remainder proof; server execution pending |
 
 ## Current Files
 
@@ -37,19 +43,20 @@ launch remains pending.
   `recovery_workflow.py`, `recovery_combined.py`, and `scripts/train_distill.py`.
 - Run instructions: `plans/g1_recovery_moe_integration.md`.
 - Checklist: `checklists/g1_recovery_moe_integration.md`.
-- Evidence: E122/E124/E125/E126/E127/E128 in `evidence/current.md` and local `.local-build/g1_recovery_moe/`.
+- Evidence: E122/E124/E125/E126/E127/E128/E129/E130 in `evidence/current.md` and local `.local-build/g1_recovery_moe/`.
 
 ## Next Boundary
 
 Pull the integration branch and run
-`scripts/deploy/train_unilab_g1_recovery_dagger8.sh` on the server. It forks from
-`20261010-182545_recovery_dagger1_saved_data/dagger_iteration_1.pt` and the verified
-1114112-row cumulative aggregate, then performs eight additional DAgger rounds.
-Each round collects five scenarios with the previous student, aggregates all
-past data in a fresh CPU process, and updates the student in a fresh learner
-process. Cached SAC targets, quotas and replay-budget expansion are unchanged;
-bootstrap and SAC teacher training are skipped. The original manifests remain
-immutable. The native root cause and nested provenance anomaly are still open;
-process isolation is containment, not a root-cause repair. Trained-student
-physical reliability and old-capability regression remain unaccepted. No direct
-server access exists, so do not report the remote run as started or completed.
+`scripts/deploy/resume_unilab_g1_recovery_dagger.py --run-dir
+/ssd1/cyx/liujun/UniLab/logs/distill_workflow/20261010-193512_recovery_dagger8`.
+The owner verifies the third-round parent checkpoint, teacher hashes, successful
+fourth aggregation acknowledgement and cumulative source identities; completes
+only the saved fourth update in a fresh directory; then uses the existing fork
+connector for four remaining rounds. Old files and partial metrics stay unchanged.
+New continuation checkpoints 1..4 map to original rounds 5..8. Each child failure
+now persists stderr and includes its tail in the raised error; failure stops the
+run. This is recovery/observability, not a repair of an identified native or CUDA
+root cause. Do not restart the original eight-round launcher from its older seed.
+No direct server access exists; full completion and physical acceptance remain
+pending server evidence.

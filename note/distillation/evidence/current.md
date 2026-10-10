@@ -2570,3 +2570,80 @@ or policy-quality conclusion is authorized.
   Full repository gates are not newly claimed. Formal CUDA execution,
   eight-round server completion and physical reliability remain unverified;
   this session has no direct server connection.
+
+
+## E129: Server round-4 update loader failure, inner error unconfirmed (2026-10-10)
+
+- User-reported run:
+  `/ssd1/cyx/liujun/UniLab/logs/distill_workflow/20261010-193512_recovery_dagger8`;
+  saved-student fork, eight rounds and offline-stage isolation enabled.
+- Parent traceback reaches workflow update_student for round 4, then
+  offline_stage.run_offline_stage_process -> subprocess.run. The child returns
+  status 1. Request is checkpoints/dagger_iteration_4.pt.offline-request.json;
+  result path is the matching .offline-result.json.
+- Two user supplements show child _run_offline_stage_worker ->
+  run_offline_dataset_update line 797 -> load_distillation_dataset, but omit
+  the remaining frames and final exception. Rich workflow output interrupts
+  the pasted traceback. The loader sub-boundary and cause are unconfirmed;
+  neither CUDA OOM, persisted label corruption nor a native fault is established.
+- Code-confirmed phase ordering implies three previous new rounds committed
+  their checkpoints before round 4. The round-4 aggregate was assembled before
+  this loader failed; no round-4 optimizer update was reached. Remote manifest,
+  checkpoint and dataset bytes remain unavailable locally.
+- No production change or full-training retry is made from the wrapper error.
+  Next discriminator reads the existing update request and reproduces only
+  trainer preparation and dataset loading in a fresh process at the requested
+  device, with stdout/stderr redirected to a fresh log. It performs zero
+  optimizer steps and zero checkpoint/dataset writes and preserves old runs.
+- The exact probe sequence passes on the local E128 32-row actual 99/99/29
+  Recovery fixture: prepare_student -> load_dataset -> LOAD_OK, CPU, updates 0,
+  checkpoint writes 0. This validates the probe only; server failure remains
+  unreproduced. Do not rerun the eight-round launcher from its original seed
+  or claim a root-cause fix before obtaining the actual inner error.
+
+
+## E130: Round-4 fresh load PASS; verified repair and remainder entrypoint (2026-10-10)
+
+- User's exact E129 preparation/load replay reports phase=prepare_student,
+  phase=load_dataset on
+  `/ssd1/cyx/liujun/UniLab/logs/distill_workflow/20261010-193512_recovery_dagger8/datasets/dagger_iteration_4_aggregate.pt`,
+  then LOAD_OK rows=2424832. This matches 1114112 seed rows plus four 327680-row
+  scenario additions. It proves successful fresh-process load, not the original
+  exception type, a native/CUDA root cause, label provenance integrity or quality.
+- No symptom normalization or speculative CUDA/data algorithm fix is applied.
+  Recovery owner workflow.recover_workflow_student_update verifies the current
+  parent checkpoint and teacher hashes; fourth aggregate acknowledgement/request
+  and output hash; exact prior plus fourth scenario paths; then replays only the
+  stored update into a fresh directory. The new checkpoint must name the same
+  aggregate and descend from the third-round input. Actual positive update count
+  and identity are recorded; the original manifest/request/partial metrics remain
+  unchanged, and no original completion record is invented.
+- CLI scripts/deploy/resume_unilab_g1_recovery_dagger.py reuses the existing fork
+  connector with the verified saved update and aggregate. Original target 8 minus
+  recovered round 4 yields four new local rounds, corresponding to original 5..8.
+  Output is parent-name_recovered_timestamp/checkpoints/recovered_iteration_4.pt
+  followed by continued/checkpoints/dagger_iteration_1.pt..dagger_iteration_4.pt.
+  Teachers, quotas, cached supervision, optimizer reset and automatic replay
+  budget expansion are unchanged; neither bootstrap nor old rounds are retrained.
+- OfflineStageProcessError remains a CalledProcessError subtype, persists child
+  stderr beside the output, and includes its last 16 KiB and path after display
+  cleanup. Live stdout progress is preserved. Stage failures stop, retaining all
+  original inputs; there is no automatic retry loop or label guard bypass.
+- Local recovery tests construct a three-round, five-scenario parent, interrupt
+  before fourth learning with a real acknowledged aggregate and partial metrics,
+  then perform a real isolated fourth learner update. The fourth uses 50 fixture
+  rows and expands to 40 updates; a fresh fork executes four remaining rounds,
+  retains all roles/scenarios, reaches 90 rows, and preserves every original file.
+  Wrong parent checkpoint, changed aggregate and omitted cumulative sources are
+  rejected before the new training directory is created. CLI forwards only the
+  verified seed and four-round budget. These are synthetic contract fixtures,
+  not physical recovery or full-budget CUDA acceptance.
+- Verification: final focused batch of offline-stage/recovery, generic workflow,
+  Recovery integration, Recovery CLI and existing two-expert CLI tests reports
+  52 passed in 23.40 s via uv run --no-sync python -m pytest -p no:cacheprovider.
+  Ruff lint/format for four changed Python files and direct CLI --help pass.
+  Full repository gates are not newly claimed. Formal server execution remains
+  unverified; no root-cause fix is claimed.
+- No server connection exists in this session. Fourth formal update, remaining
+  four formal rounds and repeated-state physical acceptance remain pending. The
+  original hidden loader error remains unconfirmed despite the successful replay.

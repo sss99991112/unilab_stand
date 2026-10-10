@@ -28,6 +28,7 @@ from unilab.algos.torch.distill import (
     write_role_artifact_manifest,
 )
 from unilab.algos.torch.distill.offline_stage import run_offline_stage_process
+from unilab.algos.torch.distill.workflow import recover_workflow_student_update
 from unilab.algos.torch.fast_sac.learner import SACActor
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -305,7 +306,7 @@ def test_offline_worker_failure_stops_without_success_result(tmp_path):
     del cfg["defaults"]
     cfg.training.multitask_sources = [{"path": str(tmp_path / "missing.pt"), "role": "walk"}]
     output = tmp_path / "failed_aggregate.pt"
-    with pytest.raises(subprocess.CalledProcessError):
+    with pytest.raises(subprocess.CalledProcessError) as captured:
         run_offline_stage_process(
             entrypoint=ROOT / "scripts/train_distill.py",
             config=OmegaConf.to_container(cfg, resolve=True),
@@ -315,3 +316,240 @@ def test_offline_worker_failure_stops_without_success_result(tmp_path):
         )
     assert not output.exists()
     assert not output.with_name(output.name + ".offline-result.json").exists()
+
+    stderr_path = output.with_name(output.name + ".offline-stderr.log")
+    assert "FileNotFoundError" in stderr_path.read_text()
+    assert str(stderr_path) in str(captured.value)
+    assert "FileNotFoundError" in str(captured.value)
+
+
+def _interrupted_fourth_round(tmp_path):
+    cfg, teacher, specs, bootstrap, seed, data = _fixture(tmp_path)
+    parent = tmp_path / "interrupted"
+    fork_workflow_run(
+        parent_run_dir=bootstrap, run_dir=parent, checkpoint_override=seed, dataset_override=data
+    )
+
+    def collect(scenario, checkpoint, iteration, output):
+        return _dataset(output, (scenario,)).num_samples
+
+    def aggregate(sources, output):
+        config = OmegaConf.to_container(cfg, resolve=True)
+        config["training"]["multitask_sources"] = [
+            {
+                "path": str(s.path),
+                "role": s.role,
+                "preserve_row_role_labels": s.preserve_row_role_labels,
+                **({"scenario": s.scenario} if s.scenario else {}),
+            }
+            for s in sources
+        ]
+        if output.name == "dagger_iteration_4_aggregate.pt":
+            return run_offline_stage_process(
+                entrypoint=ROOT / "scripts/train_distill.py",
+                config=config,
+                operation="aggregate",
+                arguments={"dataset_path": str(output)},
+                output_path=output,
+            )["dataset_num_samples"]
+        return train_distill.run_multitask_dataset_assembly(
+            OmegaConf.create(config), dataset_path=output
+        )["dataset_num_samples"]
+
+    def update(dataset, input_checkpoint, output):
+        if output.name == "dagger_iteration_4.pt":
+            config = OmegaConf.to_container(cfg, resolve=True)
+            config["training"]["offline_init_checkpoint"] = str(input_checkpoint)
+            request = {
+                "operation": "update",
+                "config": config,
+                "arguments": {
+                    "teacher_checkpoint": str(teacher),
+                    "dataset_path": str(dataset),
+                    "batch_size": 20,
+                    "max_updates": 1,
+                    "device": "cpu",
+                    "checkpoint_path": str(output),
+                    "auto_expand_replay_budget": True,
+                },
+            }
+            output.with_name(output.name + ".offline-request.json").write_text(json.dumps(request))
+            raise RuntimeError("simulated interrupted learner")
+        loaded = load_distillation_student_policy(input_checkpoint)
+        save_distillation_checkpoint(
+            output,
+            student=loaded.policy,
+            agent_steps=loaded.agent_steps + 20,
+            distill_runtime_cfg={
+                **loaded.distill_runtime_cfg,
+                "dataset_path": str(dataset),
+                "student_init_checkpoint_sha256": file_sha256(input_checkpoint),
+            },
+        )
+        return 1
+
+    with pytest.raises(RuntimeError, match="simulated interrupted learner"):
+        run_multirole_dagger_workflow(
+            run_dir=parent,
+            role_specs=specs,
+            scenario_specs=SCENARIOS,
+            target_iterations=4,
+            collect_role=lambda *a: pytest.fail("no role recollection"),
+            collect_scenario=collect,
+            aggregate_datasets=aggregate,
+            update_student=update,
+        )
+    # Model the uncommitted metrics which prevent direct resume of the old run.
+    (parent / "distillation_metrics.json").write_text('{"partial_round":4}')
+    return cfg, specs, parent
+
+
+def test_recovered_fourth_update_preserves_old_artifacts_and_only_four_rounds_remain(tmp_path):
+    cfg, specs, parent = _interrupted_fourth_round(tmp_path)
+    before = {path: path.read_bytes() for path in parent.rglob("*") if path.is_file()}
+    recovery = tmp_path / "recovery"
+    receipt = recover_workflow_student_update(
+        parent_run_dir=parent,
+        recovery_run_dir=recovery,
+        entrypoint=ROOT / "scripts/train_distill.py",
+    )
+    assert receipt["recovered_original_iteration"] == 4
+    assert receipt["original_target_iterations"] == 8 and receipt["remaining_iterations"] == 4
+    assert receipt["dataset_num_samples"] == 50 and receipt["updates"] == 40
+    recovered = Path(receipt["checkpoint_path"])
+    loaded = load_distillation_student_policy(recovered)
+    original = load_distillation_student_policy(parent / "checkpoints/dagger_iteration_3.pt")
+    assert loaded.distill_runtime_cfg["student_init_checkpoint_sha256"] == file_sha256(
+        parent / "checkpoints/dagger_iteration_3.pt"
+    )
+    assert any(
+        not torch.equal(value, original.policy.state_dict()[key])
+        for key, value in loaded.policy.state_dict().items()
+    )
+    assert json.loads((recovery / "recovered_update.json").read_text()) == receipt
+    continued = recovery / "continued"
+    fork_workflow_run(
+        parent_run_dir=parent,
+        run_dir=continued,
+        checkpoint_override=recovered,
+        dataset_override=receipt["dataset_path"],
+    )
+    visited = []
+
+    def collect(scenario, checkpoint, iteration, output):
+        visited.append((iteration, checkpoint))
+        return _dataset(output, (scenario,)).num_samples
+
+    def aggregate(sources, output):
+        assembled = OmegaConf.create(OmegaConf.to_container(cfg, resolve=True))
+        assembled.training.multitask_sources = [
+            {
+                "path": str(s.path),
+                "role": s.role,
+                "preserve_row_role_labels": s.preserve_row_role_labels,
+                **({"scenario": s.scenario} if s.scenario else {}),
+            }
+            for s in sources
+        ]
+        return train_distill.run_multitask_dataset_assembly(assembled, dataset_path=output)[
+            "dataset_num_samples"
+        ]
+
+    def update(dataset, input_checkpoint, output):
+        student = load_distillation_student_policy(input_checkpoint)
+        save_distillation_checkpoint(
+            output,
+            student=student.policy,
+            agent_steps=student.agent_steps + 20,
+            distill_runtime_cfg={
+                **student.distill_runtime_cfg,
+                "dataset_path": str(dataset),
+                "student_init_checkpoint_sha256": file_sha256(input_checkpoint),
+            },
+        )
+        return 1
+
+    result = run_multirole_dagger_workflow(
+        run_dir=continued,
+        role_specs=specs,
+        scenario_specs=SCENARIOS,
+        target_iterations=receipt["remaining_iterations"],
+        collect_role=lambda *a: pytest.fail("no bootstrap"),
+        collect_scenario=collect,
+        aggregate_datasets=aggregate,
+        update_student=update,
+    )
+    assert result.completed_iterations == 4 and result.cumulative_num_samples == 90
+    assert len(visited) == 20 and visited[0][1] == recovered
+    assert result.checkpoint_path.name == "dagger_iteration_4.pt"
+    for path, content in before.items():
+        assert path.read_bytes() == content
+
+
+@pytest.mark.parametrize("failure", ["input_checkpoint", "aggregate_bytes", "cumulative_sources"])
+def test_recovery_rejects_invalid_identity_before_training(tmp_path, failure):
+    _, _, parent = _interrupted_fourth_round(tmp_path)
+    request_path = parent / "checkpoints/dagger_iteration_4.pt.offline-request.json"
+    aggregate = parent / "datasets/dagger_iteration_4_aggregate.pt"
+    if failure == "input_checkpoint":
+        request = json.loads(request_path.read_text())
+        request["config"]["training"]["offline_init_checkpoint"] = str(
+            parent / "checkpoints/dagger_iteration_2.pt"
+        )
+        request_path.write_text(json.dumps(request))
+    elif failure == "aggregate_bytes":
+        with aggregate.open("ab") as stream:
+            stream.write(b"changed")
+    else:
+        aggregate_request = aggregate.with_name(aggregate.name + ".offline-request.json")
+        request = json.loads(aggregate_request.read_text())
+        request["config"]["training"]["multitask_sources"].pop(0)
+        aggregate_request.write_text(json.dumps(request))
+        acknowledgement = aggregate.with_name(aggregate.name + ".offline-result.json")
+        result = json.loads(acknowledgement.read_text())
+        result["request_sha256"] = file_sha256(aggregate_request)
+        acknowledgement.write_text(json.dumps(result))
+    recovery = tmp_path / "recovery"
+    with pytest.raises(ValueError, match="current checkpoint|output hash|aggregate sources"):
+        recover_workflow_student_update(
+            parent_run_dir=parent,
+            recovery_run_dir=recovery,
+            entrypoint=ROOT / "scripts/train_distill.py",
+        )
+    assert not recovery.exists()
+
+
+def test_recovery_cli_forwards_verified_seed_and_remaining_budget(monkeypatch, tmp_path):
+    from scripts.deploy import resume_unilab_g1_recovery_dagger as cli
+
+    cfg, _, parent = _interrupted_fourth_round(tmp_path)
+    captured = {}
+
+    def run(config):
+        captured.update(OmegaConf.to_container(config, resolve=True))
+        return {"checkpoint_path": "final.pt"}
+
+    monkeypatch.setattr(cli, "run_single_entry_workflow", run)
+    receipt = {
+        "remaining_iterations": 4,
+        "original_request_path": str(
+            parent / "checkpoints/dagger_iteration_4.pt.offline-request.json"
+        ),
+        "checkpoint_path": str(tmp_path / "repaired.pt"),
+        "dataset_path": str(parent / "datasets/dagger_iteration_4_aggregate.pt"),
+        "parent_run_dir": str(parent),
+        "recovered_original_iteration": 4,
+    }
+    assert cli.continue_after_recovered_update(receipt, tmp_path / "recovery") == {
+        "checkpoint_path": "final.pt"
+    }
+    training = captured["training"]
+    assert training["offline_init_checkpoint"] == receipt["checkpoint_path"]
+    assert training["workflow"]["dagger_iterations"] == 4
+    assert training["workflow"]["isolate_offline_stages"] is True
+    assert training["workflow"]["fork_checkpoint_path"] == receipt["checkpoint_path"]
+    assert training["workflow"]["fork_dataset_path"] == receipt["dataset_path"]
+    assert training["workflow"]["run_dir"] == str(tmp_path / "recovery/continued")
+    assert training["offline_balance_quotas"] == OmegaConf.to_container(
+        cfg.training.offline_balance_quotas
+    )

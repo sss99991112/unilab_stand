@@ -17,6 +17,7 @@ from .async_runtime import (
     validate_dagger_collect_result,
 )
 from .data import load_distillation_dataset, save_distillation_dataset
+from .offline_stage import read_offline_stage_result, run_offline_stage_process
 from .performance import (
     LEGACY_REQUEST_STAGE_NAMES,
     PERSISTENT_REQUEST_STAGE_NAMES,
@@ -1378,3 +1379,123 @@ def fork_workflow_run(
         )
     _write_json_atomic(manifest_path, payload)
     return manifest_path
+
+
+def recover_workflow_student_update(
+    *, parent_run_dir: str | Path, recovery_run_dir: str | Path, entrypoint: str | Path
+) -> dict[str, Any]:
+    """Complete one acknowledged aggregate's interrupted update in a fresh directory.
+
+    The parent manifest remains immutable. The result is a verified saved-update
+    seed for the existing fork owner, not a fabricated parent-round completion.
+    """
+    parent_dir = Path(parent_run_dir).resolve()
+    recovery_dir = Path(recovery_run_dir).resolve()
+    manifest_path = parent_dir / "run_manifest.json"
+    parent = _load_json(manifest_path)
+    parent_hash = file_sha256(manifest_path)
+    completed = int(parent["completed_dagger_iterations"])
+    iteration = completed + 1
+    checkpoint = _verified_current_checkpoint(parent).resolve()
+    checkpoint_hash = file_sha256(checkpoint)
+    failed_output = parent_dir / "checkpoints" / f"dagger_iteration_{iteration}.pt"
+    request_path = failed_output.with_name(failed_output.name + ".offline-request.json")
+    request = _load_json(request_path)
+    if request.get("operation") != "update":
+        raise ValueError("recovery requires an interrupted update request")
+    config = request["config"]
+    arguments = dict(request["arguments"])
+    if config["training"]["workflow"]["execution_mode"] != "legacy":
+        raise ValueError("saved-update recovery currently requires execution_mode=legacy")
+    if Path(config["training"]["offline_init_checkpoint"]).resolve() != checkpoint:
+        raise ValueError("interrupted update does not use the parent's current checkpoint")
+    if Path(arguments["checkpoint_path"]).resolve() != failed_output:
+        raise ValueError("interrupted update output does not match the next parent iteration")
+    target = int(config["training"]["workflow"]["dagger_iterations"])
+    if target < iteration:
+        raise ValueError("interrupted iteration is beyond its requested target")
+    for artifact in parent["role_artifacts"]:
+        if (
+            file_sha256(artifact["teacher_checkpoint_path"])
+            != artifact["teacher_checkpoint_sha256"]
+        ):
+            raise ValueError("recovery teacher checkpoint hash mismatch")
+    if (
+        Path(arguments["teacher_checkpoint"]).resolve()
+        != Path(parent["role_artifacts"][0]["teacher_checkpoint_path"]).resolve()
+    ):
+        raise ValueError("interrupted update teacher does not match the parent")
+    aggregate = parent_dir / "datasets" / f"dagger_iteration_{iteration}_aggregate.pt"
+    if Path(arguments["dataset_path"]).resolve() != aggregate:
+        raise ValueError("interrupted update does not use the expected aggregate")
+    aggregate_request = aggregate.with_name(aggregate.name + ".offline-request.json")
+    aggregate_result = aggregate.with_name(aggregate.name + ".offline-result.json")
+    acknowledged = read_offline_stage_result(
+        request_path=aggregate_request,
+        result_path=aggregate_result,
+        output_path=aggregate,
+        operation="aggregate",
+    )
+    aggregation = _load_json(aggregate_request)
+    if aggregation.get("operation") != "aggregate":
+        raise ValueError("recovery aggregate request operation mismatch")
+    if Path(aggregation["arguments"]["dataset_path"]).resolve() != aggregate:
+        raise ValueError("recovery aggregate request output mismatch")
+    expected_sources = [source.path.resolve() for source in _manifest_sources(parent)]
+    names = [item["name"] for item in parent.get("scenario_specs", [])] or [
+        item["role"] for item in parent["role_artifacts"]
+    ]
+    expected_sources.extend(
+        parent_dir / "datasets" / f"dagger_iteration_{iteration}" / f"{name}.pt" for name in names
+    )
+    observed_sources = [
+        Path(item["path"]).resolve()
+        for item in aggregation["config"]["training"]["multitask_sources"]
+    ]
+    if expected_sources != observed_sources:
+        raise ValueError(
+            "recovery aggregate sources do not match parent plus interrupted scenarios"
+        )
+    original_request_hash = file_sha256(request_path)
+    recovery_dir.mkdir(parents=True, exist_ok=False)
+    output = recovery_dir / "checkpoints" / f"recovered_iteration_{iteration}.pt"
+    arguments["checkpoint_path"] = str(output)
+    result = run_offline_stage_process(
+        entrypoint=Path(entrypoint),
+        config=config,
+        operation="update",
+        arguments=arguments,
+        output_path=output,
+    )
+    loaded = load_distillation_student_policy(output, device="cpu")
+    runtime = loaded.distill_runtime_cfg
+    if runtime.get("student_init_checkpoint_sha256") != checkpoint_hash:
+        raise ValueError("recovered student does not descend from the original input")
+    if Path(runtime.get("dataset_path", "")).resolve() != aggregate:
+        raise ValueError("recovered student does not name the original aggregate")
+    if type(result.get("update_count")) is not int or result["update_count"] <= 0:
+        raise ValueError("recovered update must perform a positive update count")
+    if (
+        file_sha256(manifest_path) != parent_hash
+        or file_sha256(request_path) != original_request_hash
+    ):
+        raise ValueError("parent manifest or original request changed during recovery")
+    receipt = {
+        "parent_run_dir": str(parent_dir),
+        "parent_manifest_sha256": parent_hash,
+        "original_request_path": str(request_path),
+        "original_request_sha256": original_request_hash,
+        "input_checkpoint_path": str(checkpoint),
+        "input_checkpoint_sha256": checkpoint_hash,
+        "checkpoint_path": str(output),
+        "checkpoint_sha256": file_sha256(output),
+        "dataset_path": str(aggregate),
+        "dataset_sha256": acknowledged["output_sha256"],
+        "dataset_num_samples": acknowledged["result"]["dataset_num_samples"],
+        "recovered_original_iteration": iteration,
+        "original_target_iterations": target,
+        "remaining_iterations": target - iteration,
+        "updates": result["update_count"],
+    }
+    _write_json_atomic(recovery_dir / "recovered_update.json", receipt)
+    return receipt

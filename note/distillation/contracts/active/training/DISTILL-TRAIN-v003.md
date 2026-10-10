@@ -101,3 +101,13 @@ collection, quotas, cached targets and the cumulative outer barrier are unchange
 The default remains false and persistent recovery remains unsupported. This is
 runtime containment with local contract evidence, not a native root-cause or
 physical-quality acceptance claim (E128).
+
+
+An interrupted offline update may be completed separately only after verifying
+its parent checkpoint, frozen teachers, acknowledged aggregate and cumulative
+source identity. The completed saved-update seed then enters the existing fork
+connector for exactly target minus recovered iteration remaining rounds. The
+original manifest and partial metrics remain unchanged; new local iteration
+numbers are explicitly mapped in recovery evidence. Every isolated worker stderr
+is persisted and surfaced on failure. E130 provides local recovery evidence;
+the failed loader's root cause and formal server completion remain unconfirmed.

@@ -15,9 +15,11 @@ Active method: `DISTILL-METHOD-v004`; runtime: `DISTILL-TRAIN-v003`.
 | Locked Hydra scenario config | recovery scenario owner | PASS (bounded) | Real CLI config regression plus 1-env, 16-row MuJoCo owner probe; source lock/content preserved |
 | Unified student recovery | formal training / live eval | PENDING physical acceptance | Bootstrap and first saved-data update completed (E127); trained policy not evaluated |
 | Repeated falls and return to walk | live eval | PENDING | No physical student acceptance yet |
-| Server formal workflow | user server | NEW PATH READY, SERVER PENDING | E128: explicit saved-update seed and fresh-process offline stages; previous in-process failure retained, native owner unknown |
+| Server formal workflow | user server | FRESH LOAD PASS, UPDATE RECOVERY PENDING | E130: exact load replay succeeds for 2424832 rows; original failure cause unknown |
 | Standalone saved-data learner | offline update owner | SERVER UPDATE COMPLETE | E127: 10281 updates, 5263872 sampled rows, cached targets, separate checkpoint saved; quality pending |
-| Eight-round saved-student continuation | workflow / offline owners | LOCAL PASS, SERVER PENDING | E128: eight toy rounds, 40 scenario collections, 16 child stages, current-student lineage and cumulative roles preserved |
+| Eight-round saved-student continuation | workflow / offline owners | LOCAL PASS, SERVER PARTIAL | E128 local eight-round proof; E129 server reached new round 4, preserve completed round-3 model |
+| Interrupted update recovery | workflow / offline owners | LOCAL PASS, SERVER PENDING | E130: acknowledged round-4 data reused, input lineage verified, old files unchanged, exactly four rounds remain |
+| Child error preservation | offline stage owner | LOCAL PASS | E130: stderr log persists the inner exception and appears in the raised error |
 | Nested source-label provenance | raw artifact / CLI formatter | UNCONFIRMED | E127: output reports one frame-class Walk label; raw persisted metadata audit pending |
 | Persistent recovery scenario | runtime | UNSUPPORTED | Rejected; new profile explicitly uses legacy |
 | Real-robot guard and export | deployment | PENDING | Height/support state guard currently uses MuJoCo sensors |

@@ -36,7 +36,39 @@ git pull --ff-only origin codex/g1-recovery-moe-integration
 切换冲突，先核对并保留这些改动。采用分支同步后，不再应用同一份补丁。
 本地曾导出的补丁只作为初始准备阶段的证据保留。
 
-## 从已更新的学生继续 8 轮（当前入口）
+## 第四轮中断后的当前续训入口
+
+服务器 run `20261010-193512_recovery_dagger8` 已完成前三轮，第四轮在学生
+更新子进程的数据加载处退出。用户独立复现同一路径已成功读取 2424832 行；
+原始失败未复现，错误类型仍未知。现有数据可供这一条恢复流程尝试继续，
+不把读入成功当成根因修复或物理质量验收。
+
+```bash
+cd /ssd1/cyx/liujun/UniLab
+git pull --ff-only origin codex/g1-recovery-moe-integration
+CUDA_VISIBLE_DEVICES=0 uv run --no-sync python scripts/deploy/resume_unilab_g1_recovery_dagger.py \
+  --run-dir /ssd1/cyx/liujun/UniLab/logs/distill_workflow/20261010-193512_recovery_dagger8
+```
+
+入口先校验第三轮权重、教师哈希、第四轮聚合文件及其成功回执、累计源路径。
+然后使用已保存的第四轮请求，在新进程、新目录中完成该轮更新；不重新采样，
+不更新原失败 run 的 manifest 或 partial metrics。学生保存后验证父权重哈希和
+原始数据路径，再通过已有 fork 入口继续剩余四轮。采样配额、缓存监督、batch
+和重放预算自动扩展都沿用第四轮请求的配置。
+
+输出目录在启动时打印，格式为原 run 名加 `_recovered_<恢复时间>`：
+
+- `checkpoints/recovered_iteration_4.pt`：补完的原第四轮学生。
+- `continued/checkpoints/dagger_iteration_1.pt` 至 `dagger_iteration_4.pt`：
+  对应原第五至第八轮，末个文件为最终学生。
+- `recovered_update.json`：真实更新次数及原始 checkpoint/data/request 身份。
+
+每个离线子进程的 stderr 保存到输出文件旁的 `.offline-stderr.log`，异常消息
+带日志路径及末尾内容，避免终端看板夹断真正错误。如果再次失败就停止，保留
+原错误和所有已完成产物；不静默替换坏标签或自动无限重试。此入口已做本地
+契约验证，尚未在本会话中远程执行。不要重跑下面的旧八轮启动入口。
+
+## 首次从已更新学生追加 8 轮的历史入口
 
 用户于 2026-10-10 明确要求直接开始 8 轮训练，跳过拟议的人工预检查。
 当前学生为
