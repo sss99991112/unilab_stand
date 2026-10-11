@@ -44,6 +44,7 @@ exec bash "$PROJECT_DIR/start.sh" \
     --checkpoint-path "$CHECKPOINT_PATH" \
     training.device=cpu \
     interactive.start_paused=true \
+    interactive.push_force_enabled=true \
     "env.recovery_reset_supine=$SUPINE" \
     "env.commands.height_range=[0.65,0.754]" \
     "++env.commands.vel_limit=[[-0.8,-0.4,-0.8],[0.8,0.4,0.8]]" \

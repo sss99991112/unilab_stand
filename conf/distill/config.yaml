@@ -181,6 +181,9 @@ interactive:
   keyboard: false
   keyboard_step_lin: 0.1
   keyboard_step_ang: 0.2
+  push_force_enabled: false
+  push_force_world: [150.0, 0.0, 0.0]
+  push_body_name: torso_link
   require_keyboard_command_obs: true
   distill_command_routing: auto
   distill_command_xy_threshold: 0.05

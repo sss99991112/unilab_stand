@@ -458,3 +458,29 @@ def test_play_interactive_viewer_model_uses_shared_render_playback_resolver(
     assert resolved["env"] is env
     assert resolved["num_envs"] == 1
     assert Path(resolved["tmp_dir"]).name.startswith("unilab-interactive-viewer-")
+
+
+def test_push_control_is_opt_in_and_requires_keyboard():
+    mod = _load_script("play_interactive")
+    for args in (
+        type("Args", (), {"keyboard": True, "push_force_enabled": False})(),
+        type("Args", (), {"keyboard": False, "push_force_enabled": True})(),
+    ):
+        assert mod._build_body_force_commander(object(), args) is None
+
+
+def test_recovery_launcher_config_enables_push_with_explicit_force_units():
+    mod = _load_script("play_interactive")
+    cfg = mod._compose_interactive_config(
+        "distill",
+        [
+            "task=g1_recovery_combined/mujoco",
+            "interactive.keyboard=true",
+            "interactive.push_force_enabled=true",
+            "interactive.push_force_world=[0,175,0]",
+        ],
+    )
+    args = mod._build_play_args(cfg, algo="distill")
+    assert args.push_force_enabled
+    assert args.push_force_world == (0.0, 175.0, 0.0)
+    assert args.push_body_name == "torso_link"

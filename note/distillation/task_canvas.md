@@ -55,7 +55,7 @@ remains paused.
   `recovery_workflow.py`, `recovery_combined.py`, and `scripts/train_distill.py`.
 - Run instructions: `plans/g1_recovery_moe_integration.md`.
 - Checklist: `checklists/g1_recovery_moe_integration.md`.
-- Evidence: E122/E124/E125/E126/E127/E128/E129/E130/E131/E132/E133 in `evidence/current.md` and local `.local-build/g1_recovery_moe/`.
+- Evidence: E122/E124/E125/E126/E127/E128/E129/E130/E131/E132/E133/E134/E135 in `evidence/current.md` and local `.local-build/g1_recovery_moe/`.
 
 ## Next Boundary
 
@@ -83,3 +83,12 @@ The user now authorizes pushing the keyboard playback updates to the existing
 GitHub repository/branch. The launcher also recognizes the model's new project-
 parent location; E134 records hash equality. Publication excludes model weights,
 local metrics/video artifacts and the active viewer logs. Training stays paused.
+
+
+The latest user request adds real disturbance keys: F holds a physical 150 N
+horizontal push, C clears it while preserving state and episode. E135 verifies
+100 relevant tests, a real rigid-body force/clear differential, and one
+continuous G1 walking -> pushed fall -> no-force recovery episode. The model
+regains upright posture in that trial but remains in Recovery without stable
+handover. Manual verification is available; policy-quality promotion and
+training remain unauthorized.

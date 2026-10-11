@@ -622,3 +622,37 @@ class TestRewardSanitization:
         assert len(warnings) >= 2
         # reward 仍被清零
         assert np.all(np.isfinite(env._state.reward))
+
+
+def test_manual_body_force_is_staged_after_domain_randomization_before_physics():
+    env = _StubNpEnv(num_envs=1)
+    env.init_state()
+    events = []
+    ids = np.array([7], dtype=np.int32)
+    force = np.array([[[150.0, 0.0, 0.0]]])
+    env._dr_manager = MagicMock()
+    env._dr_manager.apply_interval_randomization_if_due.side_effect = lambda _: events.append("dr")
+    env._backend.apply_body_force.side_effect = lambda i, f: events.append("manual_force")
+    env._backend.step.side_effect = lambda *a, **k: events.append("physics")
+    env._backend.step.return_value = None
+    env.set_external_body_force_provider(lambda: (ids, force))
+    env.step(np.zeros((1, 3)))
+    assert events == ["dr", "manual_force", "physics"]
+    called_ids, called_force = env._backend.apply_body_force.call_args.args
+    np.testing.assert_array_equal(called_ids, ids)
+    np.testing.assert_array_equal(called_force, force)
+    assert env.step_counter == 1
+
+
+def test_disabled_manual_force_provider_preserves_original_step_path():
+    env = _StubNpEnv(num_envs=1)
+    env.init_state()
+    env._backend.step.return_value = None
+    env.step(np.zeros((1, 3)))
+    env._backend.apply_body_force.assert_not_called()
+    env.set_external_body_force_provider(lambda: None)
+    env.step(np.zeros((1, 3)))
+    env._backend.apply_body_force.assert_not_called()
+    env.set_external_body_force_provider(None)
+    with pytest.raises(TypeError, match="callable"):
+        env.set_external_body_force_provider(123)

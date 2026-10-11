@@ -63,6 +63,7 @@ from unilab.training.rsl_rl import (
 )
 from unilab.visualization.interactive_playback import (
     _HORA_DISTILL_CHECKPOINT_UNAVAILABLE,
+    BodyForceCommander,
     HeightCommander,
     KeyboardCommander,
     PlaybackControls,
@@ -150,6 +151,9 @@ class PlayInteractiveArgs:
     keyboard_step_height: float = 0.01
     require_keyboard_command_obs: bool = True
     algo: str = "ppo"
+    push_force_enabled: bool = False
+    push_force_world: tuple[float, float, float] = (150.0, 0.0, 0.0)
+    push_body_name: str = "torso_link"
 
 
 def _infer_checkpoint_actor_input_dim(ckpt_path: str) -> int | None:
@@ -1115,6 +1119,18 @@ def _build_height_commander(env: Any, args) -> HeightCommander | None:
     )
 
 
+def _build_body_force_commander(env: Any, args) -> BodyForceCommander | None:
+    if not bool(getattr(args, "keyboard", False)) or not bool(
+        getattr(args, "push_force_enabled", False)
+    ):
+        return None
+    return BodyForceCommander.from_env(
+        env,
+        body_name=str(args.push_body_name),
+        force_world=args.push_force_world,
+    )
+
+
 def _apply_playback_command(playback_session: Any, env: Any, command: np.ndarray) -> None:
     setter = getattr(playback_session, "set_external_command", None)
     if callable(setter):
@@ -1357,7 +1373,9 @@ def _handle_height_key(commander: HeightCommander, keycode: int) -> bool:
     return True
 
 
-def _print_keyboard_legend(args, *, height_control: bool = False) -> None:
+def _print_keyboard_legend(
+    args, *, height_control: bool = False, push_control: bool = False
+) -> None:
     print("[play_interactive] Keyboard teleop ENABLED (drive style):")
     print("  Up / Down    : forward / backward (vx)")
     print("  Left / Right : turn left / right  (vyaw)")
@@ -1366,6 +1384,9 @@ def _print_keyboard_legend(args, *, height_control: bool = False) -> None:
     print("  Backspace    : reset to the configured starting pose")
     if str(getattr(args, "task", "")) == "G1RecoveryCombined":
         print("  R            : reset lying on back, then automatic recovery")
+    if push_control:
+        print(f"  F            : continuous push, world force {list(args.push_force_world)} N")
+        print("  C            : clear push; keep current pose, velocity and episode")
     if height_control:
         step = float(getattr(args, "keyboard_step_height", 0.01))
         print(f"  [ / ]        : target height -/+ {step:.3f} m")
@@ -1840,6 +1861,7 @@ def play_interactive(args, cfg: DictConfig | None = None, *, algo: str | None = 
 
     commander = _build_keyboard_commander(env, args)
     height_commander = _build_height_commander(env, args)
+    force_commander = _build_body_force_commander(env, args)
     if commander is not None:
         _apply_playback_command(playback_session, env, commander.command)
         env.set_autoreset(False)
@@ -1887,7 +1909,15 @@ def play_interactive(args, cfg: DictConfig | None = None, *, algo: str | None = 
         elif keycode in (ord("-"), ord("_")):
             controls.set_speed(controls.speed / 1.25)
             print(f"[play_interactive] speed={controls.speed:.2f}x")
+        elif force_commander is not None and keycode in (ord("F"), ord("f")):
+            force_commander.enable()
+            print(f"[play_interactive] {force_commander.describe()}")
+        elif force_commander is not None and keycode in (ord("C"), ord("c")):
+            force_commander.clear()
+            print(f"[play_interactive] {force_commander.describe()}")
         elif recovery_keyboard and keycode in (ord("R"), ord("r")):
+            if force_commander is not None:
+                force_commander.clear()
             playback_session.reset_recovery_pose(supine=True)
             commander.zero()
             _apply_playback_command(playback_session, env, commander.command)
@@ -1895,6 +1925,8 @@ def play_interactive(args, cfg: DictConfig | None = None, *, algo: str | None = 
                 _apply_playback_height(playback_session, height_commander.target)
             print("[play_interactive] supine reset (R); automatic recovery")
         elif (commander is not None or height_commander is not None) and keycode == _KEY_BACKSPACE:
+            if force_commander is not None:
+                force_commander.clear()
             playback_session.reset()
             if commander is not None:
                 commander.zero()
@@ -1912,7 +1944,11 @@ def play_interactive(args, cfg: DictConfig | None = None, *, algo: str | None = 
     print("[play_interactive] Opening viewer — close the window or press Esc to quit.")
     print("[play_interactive] Controls: Space=pause/resume, N=single-step, +/-=speed")
     if commander is not None or height_commander is not None:
-        _print_keyboard_legend(args, height_control=height_commander is not None)
+        _print_keyboard_legend(
+            args,
+            height_control=height_commander is not None,
+            push_control=force_commander is not None,
+        )
 
     with mujoco.viewer.launch_passive(mj_model, viz_data, key_callback=_on_key) as viewer:
         print("[play_interactive] Viewer ready; click the simulation window to use its keys.")
@@ -2027,6 +2063,8 @@ def play_interactive(args, cfg: DictConfig | None = None, *, algo: str | None = 
                 if target_dt - elapsed > 0:
                     time.sleep(target_dt - elapsed)
 
+    if force_commander is not None:
+        force_commander.clear()
     print("[play_interactive] Done.")
 
 
@@ -2101,6 +2139,15 @@ def _build_play_args(cfg: DictConfig, *, algo: str = "ppo") -> PlayInteractiveAr
             OmegaConf.select(cfg, "interactive.require_keyboard_command_obs", default=True)
         ),
         algo=algo,
+        push_force_enabled=bool(
+            OmegaConf.select(cfg, "interactive.push_force_enabled", default=False)
+        ),
+        push_force_world=tuple(
+            OmegaConf.select(cfg, "interactive.push_force_world", default=[150.0, 0.0, 0.0])
+        ),
+        push_body_name=str(
+            OmegaConf.select(cfg, "interactive.push_body_name", default="torso_link")
+        ),
     )
 
 

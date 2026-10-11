@@ -2805,3 +2805,43 @@ or policy-quality conclusion is authorized.
 - Model/recordings/local logs are excluded, no PR is requested or created,
   training remains paused. The push result and commit identity are reported
   after Git confirms successful publication.
+
+
+## E135: Real continuous push/clear keyboard controls (2026-10-11)
+
+- Authority: user explicitly asks for one key to physically push in simulation
+  and another to clear that force for better recovery validation.
+- Controls: F enables a persistent 150 N world +X force on torso_link, C
+  disables it. No accumulating force on repeated key events; pause creates no
+  queued impulse. R/Backspace clear the manual force when explicitly resetting.
+  Normal F/C leave pose, velocity, requested commands and episode untouched.
+  Magnitude/direction/body are interactive config, default off for other entry
+  profiles and enabled in play_g1_recovery_keyboard.sh.
+- Owners: BodyForceCommander caches ids/force payload at cold binding and emits
+  the configured force each actual step. After C it emits one zero payload to
+  release persistent-force backends, then None. NpEnv's opt-in force provider
+  runs after scheduled DR and before physics, using only the declared
+  SimBackend.apply_body_force API. Default provider=None retains the old path;
+  no hot asset lookup, backend-private force write or visualization-only push.
+- Validation: the environment/player/visualization test files report 100 passed;
+  Ruff, Bash syntax, actual launcher dry-run and diff checks pass. New evidence
+  covers post-DR force staging, exact shape/units, repeated F, pause/clear,
+  one-step release, cold-only body lookup, invalid vector rejection and OFF path.
+- Live command: uv run --no-sync python /private/tmp/check_g1_physical_push.py.
+  Evidence is .local-build/g1_recovery_moe/push_keyboard_20261011/.
+  First an actual MuJoCo 1 kg free rigid body receives 10 N for three .01 s
+  steps; vx=[0,.1,.2,.3,.3,.3] m/s. C preserves state and momentum and removes
+  further acceleration, confirming actual force and no residual after clear.
+- Trained G1 continuous episode, seed 2: requested vx=.3 m/s, 150 initial
+  walking frames. F lasts 35 frames (.70 s); at episode step 185, physical
+  height=.390 m, tilt=97.535 deg and recovery_active=true. C at that same step
+  leaves the exact physics snapshot, step count and .3 m/s request unchanged.
+  Over the next 750 frames, every step increases monotonically; no automatic
+  or R reset occurs, no termination/non-finite physics. Final step 935 has
+  height=.749 m and tilt=3.899 deg, still Recovery. No stable handover or return
+  to Walk in this trial; physical command connectivity passes but policy quality
+  is not accepted. This identifies a real in-motion fall path, not a reset demo.
+- Checkpoint remains original round 6, SHA
+  27d06b8d73734fb2a17c730aa63ff70b2ba4ffbef7d3d71373df43974ab9bf18.
+  No training, optimization, teacher/reward/guard changes or model upload.
+  Formal multi-seed perturbation and broad pose reliability remain pending.

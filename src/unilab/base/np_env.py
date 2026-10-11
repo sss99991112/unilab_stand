@@ -50,6 +50,9 @@ class NpEnv(ABEnv):
         self._init_randomization_applied = False
         self._nan_guard: NanGuard | None = None
         self._autoreset = True
+        self._external_body_force_provider: (
+            Callable[[], tuple[np.ndarray, np.ndarray] | None] | None
+        ) = None
 
     @property
     def cfg(self) -> EnvCfg:
@@ -110,6 +113,18 @@ class NpEnv(ABEnv):
         self._clear_step_final_observation()
         return self._state
 
+    def set_external_body_force_provider(
+        self, provider: Callable[[], tuple[np.ndarray, np.ndarray] | None] | None
+    ) -> None:
+        """Bind optional world-force input, staged after DR and before physics.
+
+        The provider resolves no assets on the step path and returns cached body
+        ids and forces with shape (num_envs, num_bodies, 3), or None.
+        """
+        if provider is not None and not callable(provider):
+            raise TypeError("external body-force provider must be callable or None")
+        self._external_body_force_provider = provider
+
     def step(self, actions: np.ndarray) -> NpEnvState:
         import time
 
@@ -126,6 +141,11 @@ class NpEnv(ABEnv):
 
         if self._dr_manager is not None:
             self._dr_manager.apply_interval_randomization_if_due(self.step_counter)
+        provider = self._external_body_force_provider
+        if provider is not None:
+            body_force = provider()
+            if body_force is not None:
+                self._backend.apply_body_force(*body_force)
         self._state.truncated.fill(False)
         self._clear_step_final_observation()
 

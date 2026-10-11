@@ -17,6 +17,7 @@ if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
 from unilab.visualization.interactive_playback import (
+    BodyForceCommander,
     HeightCommander,
     KeyboardCommander,
     OffPolicyPlaybackSession,
@@ -1684,3 +1685,58 @@ def test_recovery_manual_reset_installs_latch_before_refreshing_policy_observati
         num_envs=1,
     )
     assert session.reset() == {"obs": "current_supine_physics"}
+
+
+def test_manual_push_is_persistent_not_accumulated_and_clears_without_reset():
+    ids = np.array([7], dtype=np.int32)
+    force = np.array([[[150.0, 0.0, 0.0]]])
+    commander = BodyForceCommander(body_name="torso_link", body_ids=ids, force=force)
+    assert commander.force_for_step() is None
+    # Key presses while paused must never queue or accumulate hidden impulses.
+    commander.enable()
+    commander.clear()
+    assert commander.force_for_step() is None
+    commander.enable()
+    commander.enable()
+    for _ in range(3):
+        payload = commander.force_for_step()
+        np.testing.assert_array_equal(payload[0], ids)
+        np.testing.assert_array_equal(payload[1], force)
+    commander.clear()
+    payload = commander.force_for_step()
+    np.testing.assert_array_equal(payload[1], np.zeros_like(force))
+    assert commander.force_for_step() is None
+    commander.clear()
+    assert commander.force_for_step() is None
+
+
+def test_manual_push_resolves_body_only_when_binding():
+    lookups = []
+
+    def get_body_ids(names):
+        lookups.append(names)
+        return np.array([7], dtype=np.int32)
+
+    backend = SimpleNamespace(
+        get_dr_capabilities=lambda: SimpleNamespace(supports_interval_body_force=True),
+        get_body_ids=get_body_ids,
+    )
+    providers = []
+    env = SimpleNamespace(
+        _backend=backend, num_envs=1, set_external_body_force_provider=providers.append
+    )
+    commander = BodyForceCommander.from_env(
+        env, body_name="torso_link", force_world=[150.0, 0.0, 0.0]
+    )
+    commander.enable()
+    commander.clear()
+    commander.enable()
+    for _ in range(3):
+        assert providers[0]()[1].shape == (1, 1, 3)
+    assert lookups == [["torso_link"]]
+
+
+@pytest.mark.parametrize("vector", [[1.0, 2.0], [float("nan"), 0.0, 0.0], [0.0, float("inf"), 0.0]])
+def test_manual_push_rejects_invalid_world_force_before_binding(vector):
+    with pytest.raises(ValueError, match="finite 3-D"):
+        BodyForceCommander.from_env(SimpleNamespace(), body_name="torso_link", force_world=vector)

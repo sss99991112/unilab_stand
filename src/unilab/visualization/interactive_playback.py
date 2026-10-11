@@ -205,6 +205,66 @@ class HeightCommander:
         return f"target_height={self.target:.3f} m range=[{self.low:.3f}, {self.high:.3f}]"
 
 
+@dataclass
+class BodyForceCommander:
+    """Manual persistent world force; keys never modify physical state."""
+
+    body_name: str
+    body_ids: np.ndarray
+    force: np.ndarray
+    _enabled: bool = field(default=False, init=False)
+    _was_applied: bool = field(default=False, init=False)
+    _zero_force: np.ndarray = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        self.body_ids = np.asarray(self.body_ids, dtype=np.int32).reshape(-1).copy()
+        self.force = np.asarray(self.force, dtype=np.float64).copy()
+        if self.body_ids.size != 1 or self.body_ids[0] < 0:
+            raise ValueError("manual push requires exactly one valid body id")
+        if self.force.ndim != 3 or self.force.shape[1:] != (1, 3):
+            raise ValueError("manual push requires force shape (num_envs, 1, 3)")
+        if self.force.shape[0] == 0 or not np.isfinite(self.force).all():
+            raise ValueError("manual push force must be finite with at least one environment")
+        self._zero_force = np.zeros_like(self.force)
+
+    @classmethod
+    def from_env(cls, env: Any, *, body_name: str, force_world: Any) -> BodyForceCommander:
+        vector = np.asarray(force_world, dtype=np.float64)
+        if vector.shape != (3,) or not np.isfinite(vector).all():
+            raise ValueError("push_force_world must be a finite 3-D world-frame vector")
+        backend = env._backend
+        if not backend.get_dr_capabilities().supports_interval_body_force:
+            raise NotImplementedError("manual push requires the public body-force backend API")
+        # Body ids are resolved only here, before opening the viewer.
+        body_ids = backend.get_body_ids([body_name])
+        force = np.broadcast_to(vector, (env.num_envs, 1, 3)).copy()
+        commander = cls(body_name=body_name, body_ids=body_ids, force=force)
+        env.set_external_body_force_provider(commander.force_for_step)
+        return commander
+
+    def enable(self) -> None:
+        self._enabled = True
+
+    def clear(self) -> None:
+        self._enabled = False
+
+    def force_for_step(self) -> tuple[np.ndarray, np.ndarray] | None:
+        enabled = self._enabled
+        if enabled:
+            self._was_applied = True
+            return self.body_ids, self.force
+        if self._was_applied:
+            # Explicitly release persistent-force backends on the next real step.
+            self._was_applied = False
+            return self.body_ids, self._zero_force
+        return None
+
+    def describe(self) -> str:
+        status = "ON" if self._enabled else "OFF"
+        vector = self.force[0, 0].tolist() if self._enabled else [0.0, 0.0, 0.0]
+        return f"external push {status}: body={self.body_name}, world_force_N={vector}"
+
+
 @dataclass(frozen=True)
 class MotionOverlaySelection:
     """Cold-path selection of task bodies used by playback overlays."""
@@ -1666,6 +1726,7 @@ def prepare_motion_overlay_selection(
 
 
 __all__ = [
+    "BodyForceCommander",
     "HeightCommander",
     "KeyboardCommander",
     "MotionOverlaySelection",
