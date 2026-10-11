@@ -2647,3 +2647,161 @@ or policy-quality conclusion is authorized.
 - No server connection exists in this session. Fourth formal update, remaining
   four formal rounds and repeated-state physical acceptance remain pending. The
   original hidden loader error remains unconfirmed despite the successful replay.
+
+
+## E131: User pauses at original round 6 and selects latest complete student (2026-10-10)
+
+- User reports recovery directory
+  `/ssd1/cyx/liujun/UniLab/logs/distill_workflow/20261010-193512_recovery_dagger8_recovered_20261010-201041`
+  with checkpoints, continued and recovered_update.json. Continuation checkpoint
+  listing contains dagger_iteration_1.pt and dagger_iteration_2.pt, each with
+  offline request/result/stderr files. Local round 3 has request/stderr only and
+  no .pt or result. No failure cause for local round 3 is inferred from this list.
+- Latest reported complete student is
+  `continued/checkpoints/dagger_iteration_2.pt`, corresponding to original round
+  6 under E130's local rounds 1..4 -> original rounds 5..8 mapping. The first
+  continuation student remains a previous completed candidate. JSON and logs
+  are provenance/debug files, not deployable student weights.
+- User explicitly says to stop training for now and will download the complete
+  model to inspect effects. Further training authorization is revoked until a
+  new instruction. No remote stop was performed; user must interrupt the actual
+  training terminal if still running. No checkpoint, dataset or log is deleted.
+- Playback uses only the student .pt plus repository code/assets; architecture,
+  runtime configuration and Recovery routing contract are embedded. Unified
+  Recovery playback requires g1_recovery_combined. Server bytes, file hash,
+  actual termination, download and policy behavior are unconfirmed locally.
+  Artifact selection is not a physical reliability acceptance claim.
+
+## E132: Downloaded original round-6 student; bounded physical effect check (2026-10-10)
+
+- Authority: user pauses training, then explicitly requests local effect checks
+  after downloading the model and identifies its location as the home directory.
+  No training, production behavior change or GitHub publish is executed.
+- Artifact: `.local-build/g1_recovery_moe/round6_local_eval_20261010/REPORT.md`,
+  evaluation_results.json, evaluation_summary.json, runtime_identity.json,
+  source/artefact hashes, execution logs, per-episode metrics and physics states,
+  and five metric-annotated 15-second GIF clips. Animation export uses Pillow
+  after the local ffmpeg executable is found absent; quantitative evaluation was
+  already complete and unaffected.
+- Verified downloaded path `/Users/sss9999/dagger_iteration_2.pt`; SHA-256
+  `27d06b8d73734fb2a17c730aa63ff70b2ba4ffbef7d3d71373df43974ab9bf18`;
+  agent_steps=36844544. Embedded source dataset/init checkpoint locate this at
+  recovery continuation round 2, original round 6. Obs=99, actions=29,
+  experts=Walk0/StandHeight1/Recovery2; weights finite and production routing
+  contract validated. Migration metadata new_expert_trained=false describes the
+  historical initialization, not the currently updated Recovery weights.
+- Class: runtime-confirmed, local CPU MuJoCo. Actual repository root is
+  `/Users/sss9999/enbodied_intelligence/unilab/unilab_stand`; the context-provided
+  `/Users/sss9999/locomotion/unilab_stand` is absent. Runtime source hashes and
+  exact commit are stored. Uses the production combined task/routed policy,
+  no assistance, no autoreset, existing noise/randomization, 750 steps (15 s).
+- Main evaluation has 49 episodes: 20 supine student seeds 1..20, five matched
+  reference episodes, and 4 nominal scenarios x 3 seeds x 2 policies. Two
+  additional replay captures (student seeds 4/20) reproduce their earlier exact
+  reset/dynamics/steps/longest stability/handover/final height before rendering.
+- Supine student: all 20 reach height >=0.65 m and tilt <=10 deg at least once;
+  8/20 (40%) complete the full 1 s stable window and hand over, all eight stable
+  at the end. Eleven finish upright without completing the stable window;
+  seed 4 rises then falls. Mean longest stable duration 2.397 s, median 0.84 s;
+  the long successful post-handover stands raise the mean. No relatch after the
+  eight successful handovers. Seed 1 ends at 0.753 m but longest stability is
+  only 0.84 s; route=Recovery for all 750 steps.
+- Stable conditions are unchanged: height >=0.65 m, tilt <=10 deg, speed <=0.20
+  m/s, angular speed <=0.30 rad/s, both feet, continuously for 1 s. Summary
+  stores conditional angular/linear/contact failure fractions in upright
+  Recovery states after 2 s. These identify interruptions, not a training cause.
+- Same-initial-state and same randomized-dynamics hashes agree in all paired
+  tests. First five seeds: selected frozen Recovery SAC plus old StandHeight
+  expert hand over 5/5; unified student hands over 1/5. Seed-1 reference again
+  hands over at 9.0 s. This is a matched integration differential, not a new
+  teacher-candidate ranking or an estimate of universal teacher success.
+  Frozen teacher actions are also queried through the production unit adapter
+  on the student's actual visited Recovery observations; action MSE is saved
+  only as diagnostic evidence, never quality acceptance.
+- Existing old two-expert source SHA matches migration provenance. Old/new
+  both survive 3/3 15 s trials for stand at 0.754 m, stand at 0.650 m, forward
+  0.4 m/s, and walk-stop-height schedules. At first Recovery entry, both policies
+  would stop; no rescue can hide old-ability regression. Post-2s mean height
+  errors old/new: nominal 1.549/1.597 cm, low 0.944/0.691 cm, forward
+  1.417/1.417 cm, walk-stop-height 1.274/1.154 cm. Forward velocity MAE
+  old/new=0.056/0.028 m/s. No clear regression in this bounded coverage.
+- Student, old model and selected teacher SHA are identical before/after.
+  No checkpoint rewritten, reward/guard changed, training resumed, or real
+  robot deployed. Global reliability, prone/side falls, disturbance recovery,
+  repeated falls, immediate return to walk and wider command ranges remain
+  unverified. Root cause of the learned stability gap is unconfirmed.
+
+## E133: Local keyboard-controlled recovery student playback (2026-10-10)
+
+- Authority: user requests keyboard control to inspect simulation personally.
+  Training remains paused; standalone rewards and student weights are unchanged.
+- Launcher: play_g1_recovery_keyboard.sh defaults to the downloaded home
+  dagger_iteration_2.pt, standing start, paused, CPU, manual commands/heights,
+  1-hour episode limit and no autoreset. --supine and --checkpoint-path are
+  optional. The model hash remains E132's original-round-6 SHA.
+- Owners: scripts/play_interactive.py reuses the existing commander/session,
+  adds A/D lateral control and R supine reset, and reports recovery role changes.
+  recovery_integration.recovery_command_obs_matches verifies fixed 99-D
+  command columns against active/settling effective commands. The command probe
+  changes/restores a nonzero request without resetting physical state or latch.
+- Runtime localization: before repair, a real combined wrapper reset returned
+  recovery_active=true at physical height 0.300 m/up_z=-0.026, while live
+  env.state.info still had recovery_active=false. NpEnv.reset returns row updates;
+  its autoreset consumer installs them, but the manual playback consumer did not.
+  RslRlPlaybackSession.reset now installs returned combined recovery updates,
+  clears episode step/done flags, and refreshes actor observations before any
+  expert selection. Other tasks without recovery_active retain the old path.
+  reset_recovery_pose temporarily selects supine through the existing reset
+  provider and restores the default pose flag even if reset raises.
+- Native startup fixes: Bash 3.2 empty-array expansion was corrected in the new
+  launcher. The moved virtualenv's mjpython shebang referred to the absent old
+  repository directory; start.sh's macOS branch now invokes the official
+  trampoline with the current uv Python instead of executing that stale shebang.
+  Linux playback selection is unchanged.
+- Commands: targeted pytest over recovery/command-observation/playback tests
+  reports 58 passed, 213 deselected; Ruff and diff checks pass. Additional
+  test_start_sh.py reports 5 passed / 1 failed: its existing tee-output test
+  observes an empty log; this dry-run exits before the modified macOS branch.
+  Logging-race cause/baseline reproduction is unconfirmed; do not claim a fully
+  passing suite or broaden this task to change logging behavior.
+- Real-session command: uv run --no-sync python
+  /private/tmp/check_g1_recovery_keyboard_live.py; final report
+  .local-build/g1_recovery_moe/keyboard_live_check_20261010.json is PASS.
+  Both standing/supine startup pass. 446 bounded frames verify forward, stop,
+  height target, R-style supine reset, cancellation of queued walking during
+  recovery and standing reset. All produced actions match the named checkpoint
+  expert on the same pre-action actor observation; reset probes preserve exact
+  physics/latch/request values. The failed-before-fix probe/log is retained.
+- Native GUI command: UV_CACHE_DIR=/private/tmp/unilab-g1-recovery-uv-cache
+  UV_NO_SYNC=1 PYTHONUNBUFFERED=1 bash play_g1_recovery_keyboard.sh.
+  keyboard_viewer_20261010_mjpython.log records Viewer ready, actual velocity
+  and target-height key callbacks, R supine resets, and walk/stand_height/recovery
+  transitions. User has begun operating the window. Live UI connectivity is
+  confirmed; this is not a new policy reliability acceptance.
+- Evidence directory: .local-build/g1_recovery_moe/, including reset boundary
+  before JSON, corrected/final probe logs and script, final tests, native viewer
+  log and keyboard_ui_live_confirmed.json. No training or checkpoint rewrite.
+
+
+## E134: Keyboard update publication preflight and moved checkpoint (2026-10-10)
+
+- The user explicitly asks to upload updates to GitHub. Target remains
+  sss99991112/unilab_stand, branch codex/g1-recovery-moe-integration; fetch over
+  GitHub SSH port 443 confirms HEAD/remote both at 1453a216 before publication.
+- Current model location is the repository's parent directory,
+  `/Users/sss9999/enbodied_intelligence/unilab/dagger_iteration_2.pt`; the home
+  location no longer exists. SHA remains E132/E133's
+  `27d06b8d73734fb2a17c730aa63ff70b2ba4ffbef7d3d71373df43974ab9bf18`.
+  Launcher checks home first, then project parent, while explicit checkpoint
+  arguments override the default. No model or local evidence binary is staged.
+- Publication contains the keyboard/guarded-command/reset changes, macOS
+  launcher fix, necessary regressions and current status/run documentation.
+  Relevant runtime/58-test results remain E133; Ruff, Bash syntax, diff and
+  actual launcher dry-run are the final source/CLI checks. E133's existing
+  tee-output test failure is preserved; no full-suite success is claimed.
+- The automatic non-reset fall route already exists. R remains a pose-reset
+  diagnostic, not acceptance of in-motion perturbation recovery, prone/side
+  falls or global reliability. This distinction is recorded in run instructions.
+- Model/recordings/local logs are excluded, no PR is requested or created,
+  training remains paused. The push result and commit identity are reported
+  after Git confirms successful publication.

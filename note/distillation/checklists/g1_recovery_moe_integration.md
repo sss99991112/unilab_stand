@@ -13,15 +13,17 @@ Active method: `DISTILL-METHOD-v004`; runtime: `DISTILL-TRAIN-v003`.
 | Formal CLI configuration | train CLI | PASS | Resolved 3-expert workflow with full activation; no learning |
 | Existing policy reference handover | MuJoCo probe | PASS (bounded) | seed 1: handover at 9.0 s; 6 more seconds of stand expert; no early termination |
 | Locked Hydra scenario config | recovery scenario owner | PASS (bounded) | Real CLI config regression plus 1-env, 16-row MuJoCo owner probe; source lock/content preserved |
-| Unified student recovery | formal training / live eval | PENDING physical acceptance | Bootstrap and first saved-data update completed (E127); trained policy not evaluated |
-| Repeated falls and return to walk | live eval | PENDING | No physical student acceptance yet |
-| Server formal workflow | user server | FRESH LOAD PASS, UPDATE RECOVERY PENDING | E130: exact load replay succeeds for 2424832 rows; original failure cause unknown |
+| Unified student recovery | formal training / live eval | BOUNDED: 8/20; acceptance pending | E132: original round 6 bytes verified; all 20 reach upright, only 8 stabilize and hand over; 1 falls again |
+| Old walking/height capability preservation | matched MuJoCo evaluation | PASS (bounded) | E132: each of stand nominal, stand low, forward walk, walk-stop-height survives 3/3 matched 15 s trials for both old/new; wider commands untested |
+| Repeated falls and return to walk | live eval | PENDING | E132 only checks a single supine episode and nominal command schedules |
+| Server formal workflow | user server | PAUSED BY USER | E131: continuation round 2 (original round 6) complete; process stop must be confirmed on server |
 | Standalone saved-data learner | offline update owner | SERVER UPDATE COMPLETE | E127: 10281 updates, 5263872 sampled rows, cached targets, separate checkpoint saved; quality pending |
 | Eight-round saved-student continuation | workflow / offline owners | LOCAL PASS, SERVER PARTIAL | E128 local eight-round proof; E129 server reached new round 4, preserve completed round-3 model |
-| Interrupted update recovery | workflow / offline owners | LOCAL PASS, SERVER PENDING | E130: acknowledged round-4 data reused, input lineage verified, old files unchanged, exactly four rounds remain |
+| Interrupted update recovery | workflow / offline owners | SERVER PARTIAL; latest bytes verified | E132: continuation round-2 student downloaded and load/route verified; server receipt/other bytes remain user-reported |
 | Child error preservation | offline stage owner | LOCAL PASS | E130: stderr log persists the inner exception and appears in the raised error |
 | Nested source-label provenance | raw artifact / CLI formatter | UNCONFIRMED | E127: output reports one frame-class Walk label; raw persisted metadata audit pending |
 | Persistent recovery scenario | runtime | UNSUPPORTED | Rejected; new profile explicitly uses legacy |
+| Manual keyboard recovery playback | playback / native launcher | PASS (bounded + native UI) | E133: 58 targeted checks; real forward/stop/height/recovery reset action parity; native key callbacks observed; unrelated tee-output check fails |
 | Real-robot guard and export | deployment | PENDING | Height/support state guard currently uses MuJoCo sensors |
 
 Baseline-only diagnostic tests remain failed: nine runtime trace tests reproduce

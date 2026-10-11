@@ -167,7 +167,10 @@ fi
 if [ "$OS" = "Darwin" ]; then
     # Mac OS 系统 (Darwin) 必须使用 mjpython
     echo "🍏 检测到 macOS，正在使用 mjpython 启动仿真..."
-    uv run mjpython "${ARGS[@]}"
+    # Invoke the trampoline with the current interpreter: a moved virtualenv
+    # may retain an old absolute path in mjpython's shebang.
+    MJPYTHON_WRAPPER="$(uv run python -c 'from pathlib import Path; import sys; print(Path(sys.executable).with_name("mjpython"))')"
+    uv run python "$MJPYTHON_WRAPPER" "${ARGS[@]}"
 elif [ "$OS" = "Linux" ]; then
     # 4090 服务器 (Linux) 直接使用默认的 python 即可
     echo "🐧 检测到 Linux，正在使用常规 python 启动仿真..."

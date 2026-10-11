@@ -253,11 +253,36 @@ class RslRlPlaybackSession:
         self.step_count = 0
 
     def reset(self) -> Any:
-        self.obs, _info = self.wrapped_env.reset()
+        self.obs, reset_info = self.wrapped_env.reset()
+        if isinstance(reset_info, Mapping) and "recovery_active" in reset_info:
+            # NpEnv.reset returns row updates; manual playback must install them,
+            # just as the env's autoreset consumer does, before selecting an expert.
+            state = self.env.state
+            if state is None:
+                raise RuntimeError("recovery playback reset requires initialized env state")
+            state.info.update(reset_info)
+            state.info["steps"].fill(0)
+            state.terminated.fill(False)
+            state.truncated.fill(False)
+            self.env.refresh_state()
+            self.obs = self.wrapped_env.get_observations()
         self.action_obs = None
         self.actions = None
         self.step_count = 0
         return self.obs
+
+    def reset_recovery_pose(self, *, supine: bool) -> Any:
+        """Reset through the combined task's owner, preserving its default pose."""
+        from unilab.envs.locomotion.g1.recovery_combined import G1RecoveryCombinedCfg
+
+        if not isinstance(self.env.cfg, G1RecoveryCombinedCfg):
+            raise ValueError("recovery pose reset requires G1RecoveryCombined")
+        original = self.env.cfg.recovery_reset_supine
+        self.env.cfg.recovery_reset_supine = bool(supine)
+        try:
+            return self.reset()
+        finally:
+            self.env.cfg.recovery_reset_supine = original
 
     def refresh_observation(self) -> Any:
         """Reload the current env observation without advancing the session."""

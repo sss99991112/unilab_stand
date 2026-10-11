@@ -239,6 +239,10 @@ def test_handle_command_key_maps_drive_style_keys():
     assert commander.command[2] == pytest.approx(0.0)
 
     before = commander.command.copy()
+    mod._handle_command_key(commander, ord("A"))  # sideways left
+    assert commander.command[1] == pytest.approx(0.1)
+    mod._handle_command_key(commander, ord("d"))  # sideways right cancels vy
+    assert commander.command.tolist() == before.tolist()
     mod._handle_command_key(commander, ord("q"))  # unmapped key is a no-op
     assert commander.command.tolist() == before.tolist()
 

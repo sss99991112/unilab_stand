@@ -140,6 +140,32 @@ def recovery_role_labels(info):
     )
 
 
+def recovery_command_obs_matches(info, actor_obs):
+    """Check canonical command columns against the physical recovery latch."""
+    commands = np.asarray(info["commands"])
+    active = np.asarray(info["recovery_active"], dtype=bool)
+    settling = np.asarray(info["recovery_settle_remaining"])
+    effective = np.asarray(info["recovery_effective_commands"])
+    obs = np.asarray(actor_obs)
+    n = len(commands)
+    if (
+        commands.shape != (n, 3)
+        or active.shape != (n,)
+        or settling.shape != (n,)
+        or effective.shape != (n, 3)
+        or obs.shape != (n, 99)
+        or not np.isfinite(commands).all()
+        or not np.isfinite(obs).all()
+    ):
+        return False
+    expected = commands.copy()
+    expected[active | (settling > 0)] = 0
+    return bool(
+        np.allclose(effective, expected, atol=1e-6, rtol=0)
+        and np.allclose(obs[:, 93:96], expected, atol=1e-6, rtol=0)
+    )
+
+
 def recovery_expert_indices(info):
     return np.asarray([RECOVERY_ROLES[role] for role in recovery_role_labels(info)], dtype=np.int64)
 

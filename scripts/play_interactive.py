@@ -90,7 +90,7 @@ _VELOCITY_ARROW_HEIGHT = 0.6
 _VELOCITY_ARROW_SCALE = 0.45
 _VELOCITY_ARROW_WIDTH = 0.025
 _VELOCITY_ARROW_LATERAL_OFFSET = 0.0
-_VELOCITY_COMMAND_TASK_NAME_MARKERS = ("Joystick", "Walk")
+_VELOCITY_COMMAND_TASK_NAME_MARKERS = ("Joystick", "Walk", "RecoveryCombined")
 
 ensure_registries()
 
@@ -1220,6 +1220,10 @@ def _state_policy_obs_contains_command(env: Any) -> bool:
     command = np.asarray(state.info["commands"][0, :3], dtype=np.float64)
     if np.linalg.norm(command) <= 1.0e-9:
         return False
+    if "recovery_active" in state.info:
+        from unilab.algos.torch.distill.recovery_integration import recovery_command_obs_matches
+
+        return recovery_command_obs_matches(state.info, actor_obs)
     return _row_contains_contiguous_vector(actor_obs[0], command)
 
 
@@ -1290,6 +1294,16 @@ def _policy_obs_contains_command(env: Any, *, reset_fn) -> bool:
     if _state_policy_obs_contains_command(env):
         return True
 
+    if _state_has_velocity_commands(env) and "recovery_active" in env.state.info:
+        # A nonzero request is intentionally masked while recovering/settling.
+        # Probe the real observation owner without resetting physics or the latch.
+        original_commands = env.state.info["commands"].copy()
+        try:
+            _force_policy_command_probe_obs(env, _COMMAND_OBS_VERIFY_COMMAND)
+            return _state_policy_obs_contains_command(env)
+        finally:
+            _force_policy_command_probe_obs(env, original_commands[:, :3])
+
     cmds_cfg = getattr(getattr(env, "cfg", None), "commands", None)
     if cmds_cfg is None or not hasattr(cmds_cfg, "vel_limit"):
         return False
@@ -1322,6 +1336,10 @@ def _handle_command_key(commander: KeyboardCommander, keycode: int) -> None:
         commander.nudge(commander.AXIS_VYAW, +1.0)
     elif keycode == _KEY_RIGHT:
         commander.nudge(commander.AXIS_VYAW, -1.0)
+    elif keycode in (ord("A"), ord("a")):
+        commander.nudge(commander.AXIS_VY, +1.0)
+    elif keycode in (ord("D"), ord("d")):
+        commander.nudge(commander.AXIS_VY, -1.0)
     elif keycode in (_KEY_ENTER, _KEY_KP_ENTER):
         commander.zero()
     else:
@@ -1343,7 +1361,11 @@ def _print_keyboard_legend(args, *, height_control: bool = False) -> None:
     print("[play_interactive] Keyboard teleop ENABLED (drive style):")
     print("  Up / Down    : forward / backward (vx)")
     print("  Left / Right : turn left / right  (vyaw)")
-    print("  Enter        : full stop")
+    print("  A / D        : sideways left / right (vy)")
+    print("  Enter        : full stop (commands stay set until changed)")
+    print("  Backspace    : reset to the configured starting pose")
+    if str(getattr(args, "task", "")) == "G1RecoveryCombined":
+        print("  R            : reset lying on back, then automatic recovery")
     if height_control:
         step = float(getattr(args, "keyboard_step_height", 0.01))
         print(f"  [ / ]        : target height -/+ {step:.3f} m")
@@ -1843,6 +1865,11 @@ def play_interactive(args, cfg: DictConfig | None = None, *, algo: str | None = 
             f"(interval={trace_interval}, standing_teacher={trace_standing_teacher is not None})."
         )
 
+    recovery_keyboard = commander is not None and str(args.task) == "G1RecoveryCombined"
+    if recovery_keyboard:
+        from unilab.algos.torch.distill.recovery_integration import recovery_role_labels
+    last_recovery_role = None
+
     def _on_key(keycode: int) -> None:
         if keycode == ord(" "):
             paused = controls.toggle_pause()
@@ -1860,6 +1887,13 @@ def play_interactive(args, cfg: DictConfig | None = None, *, algo: str | None = 
         elif keycode in (ord("-"), ord("_")):
             controls.set_speed(controls.speed / 1.25)
             print(f"[play_interactive] speed={controls.speed:.2f}x")
+        elif recovery_keyboard and keycode in (ord("R"), ord("r")):
+            playback_session.reset_recovery_pose(supine=True)
+            commander.zero()
+            _apply_playback_command(playback_session, env, commander.command)
+            if height_commander is not None:
+                _apply_playback_height(playback_session, height_commander.target)
+            print("[play_interactive] supine reset (R); automatic recovery")
         elif (commander is not None or height_commander is not None) and keycode == _KEY_BACKSPACE:
             playback_session.reset()
             if commander is not None:
@@ -1881,6 +1915,7 @@ def play_interactive(args, cfg: DictConfig | None = None, *, algo: str | None = 
         _print_keyboard_legend(args, height_control=height_commander is not None)
 
     with mujoco.viewer.launch_passive(mj_model, viz_data, key_callback=_on_key) as viewer:
+        print("[play_interactive] Viewer ready; click the simulation window to use its keys.")
         focus_body_id = _resolve_focus_body_id(
             mj_model, env, getattr(args, "camera_focus_body_name", "")
         )
@@ -1910,6 +1945,12 @@ def play_interactive(args, cfg: DictConfig | None = None, *, algo: str | None = 
                     _apply_playback_command(playback_session, env, commander.command)
 
                 advanced = playback_session.advance(controls)
+
+                if recovery_keyboard:
+                    role = recovery_role_labels(env.state.info)[0]
+                    if role != last_recovery_role:
+                        print(f"[play_interactive] control={role}")
+                        last_recovery_role = role
 
                 # Push env state[0] into viz_data and refresh scene
                 phys = playback_session.physics_state()[0].astype(np.float64)

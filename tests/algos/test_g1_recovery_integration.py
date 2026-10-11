@@ -20,6 +20,7 @@ from unilab.algos.torch.distill.recovery_integration import (
     RecoveryRoutedPolicy,
     collect_recovery_handover,
     extend_recovery_student_checkpoint,
+    recovery_command_obs_matches,
     recovery_expert_indices,
 )
 from unilab.envs.locomotion.g1.recovery import RecoveryConfig
@@ -355,3 +356,29 @@ def test_latest_stop_and_height_request_survive_recovery_guard():
     effective = G1RecoveryCombinedEnv._effective_command_info(env, info)
     np.testing.assert_array_equal(effective["commands"], [[0, 0, 0]])
     assert effective["height_commands"][0, 0] == 0.754
+
+
+def test_keyboard_observation_respects_recovery_settling_and_pending_requests():
+    commands = np.array([[0.4, 0.1, 0.2], [0.3, -0.1, 0.2], [0.2, 0.1, -0.3]])
+    effective = commands.copy()
+    effective[:2] = 0
+    info = {
+        "commands": commands,
+        "recovery_active": np.array([True, False, False]),
+        "recovery_settle_remaining": np.array([0, 100, 0]),
+        "recovery_effective_commands": effective,
+    }
+    obs = np.ones((3, 99))
+    obs[:, 93:96] = effective
+    assert recovery_command_obs_matches(info, obs)
+    # Commands must not leak through while recovering or settling.
+    leaked = obs.copy()
+    leaked[0, 93:96] = commands[0]
+    assert not recovery_command_obs_matches(info, leaked)
+    # An unblocked command must retain its real units and exact canonical slot.
+    wrong_units = obs.copy()
+    wrong_units[2, 93:96] *= 0.25
+    assert not recovery_command_obs_matches(info, wrong_units)
+    assert not recovery_command_obs_matches(info, obs[:, :98])
+    inconsistent = {**info, "recovery_effective_commands": commands}
+    assert not recovery_command_obs_matches(inconsistent, obs)

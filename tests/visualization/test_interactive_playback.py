@@ -1603,3 +1603,84 @@ def test_hora_distill_playback_session_loads_stage2_checkpoint_and_student_polic
     assert captured["policy_obs_mode"] == "actor"
     assert captured["loaded_checkpoint"] == checkpoint
     torch.testing.assert_close(captured["actions"], torch.ones((1, 2)))
+
+
+@pytest.mark.parametrize("default_supine", [False, True])
+@pytest.mark.parametrize("reset_fails", [False, True])
+def test_recovery_pose_reset_restores_default_config_even_if_reset_fails(
+    default_supine, reset_fails
+):
+    from unilab.envs.locomotion.g1.recovery_combined import G1RecoveryCombinedCfg
+
+    cfg = G1RecoveryCombinedCfg(recovery_reset_supine=default_supine)
+    env = SimpleNamespace(cfg=cfg)
+
+    class Wrapped:
+        def reset(self):
+            assert cfg.recovery_reset_supine is True
+            if reset_fails:
+                raise RuntimeError("reset failed")
+            return "supine_observation", {}
+
+    session = RslRlPlaybackSession(
+        env=env,
+        wrapped_env=Wrapped(),
+        device="cpu",
+        action_mode="zero",
+        policy=None,
+        num_envs=1,
+    )
+    session.step_count = 10
+    if reset_fails:
+        with pytest.raises(RuntimeError, match="reset failed"):
+            session.reset_recovery_pose(supine=True)
+    else:
+        assert session.reset_recovery_pose(supine=True) == "supine_observation"
+        assert session.step_count == 0
+    assert cfg.recovery_reset_supine is default_supine
+
+
+def test_recovery_pose_reset_rejects_other_tasks():
+    session = RslRlPlaybackSession(
+        env=SimpleNamespace(cfg=SimpleNamespace()),
+        wrapped_env=None,
+        device="cpu",
+        action_mode="zero",
+        policy=None,
+        num_envs=1,
+    )
+    with pytest.raises(ValueError, match="G1RecoveryCombined"):
+        session.reset_recovery_pose(supine=True)
+
+
+def test_recovery_manual_reset_installs_latch_before_refreshing_policy_observation():
+    state = SimpleNamespace(
+        info={"recovery_active": np.array([False]), "steps": np.array([900])},
+        terminated=np.array([True]),
+        truncated=np.array([True]),
+    )
+
+    def refresh_state():
+        assert state.info["recovery_active"].tolist() == [True]
+        assert state.info["steps"].tolist() == [0]
+        assert not state.terminated.any() and not state.truncated.any()
+        state.obs = {"obs": "current_supine_physics"}
+
+    env = SimpleNamespace(state=state, refresh_state=refresh_state)
+
+    class Wrapped:
+        def reset(self):
+            return "reset_observation", {"recovery_active": np.array([True])}
+
+        def get_observations(self):
+            return state.obs
+
+    session = RslRlPlaybackSession(
+        env=env,
+        wrapped_env=Wrapped(),
+        device="cpu",
+        action_mode="policy",
+        policy=None,
+        num_envs=1,
+    )
+    assert session.reset() == {"obs": "current_supine_physics"}
