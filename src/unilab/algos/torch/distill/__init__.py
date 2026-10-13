@@ -1,6 +1,10 @@
 """Generic behavior distillation helpers for torch locomotion policies."""
 
-from .checkpoint import load_distillation_checkpoint, save_distillation_checkpoint
+from .checkpoint import (
+    load_distillation_checkpoint,
+    restore_distillation_checkpoint,
+    save_distillation_checkpoint,
+)
 from .collector import (
     collect_distillation_dataset_from_env,
     collect_transition_distillation_dataset_from_env,
@@ -131,6 +135,7 @@ __all__ = [
     "fork_workflow_run",
     "inspect_sac_teacher_checkpoint",
     "load_distillation_checkpoint",
+    "restore_distillation_checkpoint",
     "load_distillation_dataset",
     "load_distillation_student_policy",
     "load_sac_teacher_policy",

@@ -36,6 +36,7 @@ import warnings
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from queue import Empty, SimpleQueue
 from typing import Any, cast
 
 import numpy as np
@@ -1892,7 +1893,9 @@ def play_interactive(args, cfg: DictConfig | None = None, *, algo: str | None = 
         from unilab.algos.torch.distill.recovery_integration import recovery_role_labels
     last_recovery_role = None
 
-    def _on_key(keycode: int) -> None:
+    pending_keys: SimpleQueue[int] = SimpleQueue()
+
+    def _handle_key(keycode: int) -> None:
         if keycode == ord(" "):
             paused = controls.toggle_pause()
             status = "paused" if paused else "resumed"
@@ -1950,7 +1953,7 @@ def play_interactive(args, cfg: DictConfig | None = None, *, algo: str | None = 
             push_control=force_commander is not None,
         )
 
-    with mujoco.viewer.launch_passive(mj_model, viz_data, key_callback=_on_key) as viewer:
+    with mujoco.viewer.launch_passive(mj_model, viz_data, key_callback=pending_keys.put) as viewer:
         print("[play_interactive] Viewer ready; click the simulation window to use its keys.")
         focus_body_id = _resolve_focus_body_id(
             mj_model, env, getattr(args, "camera_focus_body_name", "")
@@ -1975,6 +1978,15 @@ def play_interactive(args, cfg: DictConfig | None = None, *, algo: str | None = 
         with torch.inference_mode():
             while viewer.is_running():
                 t0 = time.perf_counter()
+
+                # The viewer invokes keys on its own thread. Only this thread
+                # may reset physics or change policy-facing state.
+                while True:
+                    try:
+                        keycode = pending_keys.get_nowait()
+                    except Empty:
+                        break
+                    _handle_key(keycode)
 
                 # Write the command before stepping so this step's obs follow it.
                 if commander is not None and env.state is not None:

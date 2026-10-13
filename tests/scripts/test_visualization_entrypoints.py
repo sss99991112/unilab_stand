@@ -484,3 +484,116 @@ def test_recovery_launcher_config_enables_push_with_explicit_force_units():
     assert args.push_force_enabled
     assert args.push_force_world == (0.0, 175.0, 0.0)
     assert args.push_body_name == "torso_link"
+
+
+def test_native_viewer_keys_are_handled_on_simulation_thread(monkeypatch):
+    from threading import Thread, get_ident
+    from types import SimpleNamespace
+
+    mod = _load_script("play_interactive")
+    parsed = mod._parse_interactive_cli(
+        [
+            "--algo",
+            "distill",
+            "--task",
+            "g1_recovery_combined",
+            "--sim",
+            "mujoco",
+            "interactive.keyboard=true",
+            "interactive.push_force_enabled=true",
+            "interactive.start_paused=true",
+            "interactive.require_keyboard_command_obs=false",
+        ]
+    )
+    cfg = mod._compose_interactive_config(parsed.algo, parsed.overrides)
+    args = mod._build_play_args(cfg, algo="distill")
+    owner_thread = get_ident()
+    mutations = []
+    env = SimpleNamespace(
+        cfg=SimpleNamespace(ctrl_dt=0.02),
+        state=SimpleNamespace(
+            info={
+                "commands": np.zeros((1, 3)),
+                "recovery_active": np.array([True]),
+                "recovery_effective_commands": np.zeros((1, 3)),
+            }
+        ),
+        set_autoreset=lambda value: None,
+    )
+
+    class Session:
+        def reset(self):
+            pass
+
+        def reset_recovery_pose(self, *, supine):
+            assert supine
+            mutations.append(("reset", get_ident()))
+
+        def set_external_command(self, command):
+            env.state.info["commands"][:] = command
+
+        def advance(self, controls):
+            assert controls.consume_step_permission()
+            mutations.append(("step", get_ident()))
+            return True
+
+        def physics_state(self):
+            return np.zeros((1, 1))
+
+    session = Session()
+    session.env = env
+    force = mod.BodyForceCommander(
+        body_name="torso_link", body_ids=np.array([7]), force=np.array([[[150.0, 0.0, 0.0]]])
+    )
+    commander = mod.KeyboardCommander.from_vel_limit([[-1, -1, -1], [1, 1, 1]])
+    monkeypatch.setattr(
+        mod, "create_distill_playback_session", lambda **kw: (session, "actor", "/tmp/model.pt")
+    )
+    monkeypatch.setattr(mod, "_uses_native_mujoco_viewer_launch", lambda: False)
+    monkeypatch.setattr(
+        mod, "prepare_motion_overlay_selection", lambda *a, **kw: SimpleNamespace(enabled=False)
+    )
+    monkeypatch.setattr(mod, "_load_viewer_model", lambda *a, **kw: object())
+    monkeypatch.setattr(mod, "_should_render_velocity_arrows", lambda *a, **kw: False)
+    monkeypatch.setattr(mod, "_build_keyboard_commander", lambda *a: commander)
+    monkeypatch.setattr(mod, "_build_height_commander", lambda *a: None)
+    monkeypatch.setattr(mod, "_build_body_force_commander", lambda *a: force)
+    monkeypatch.setattr(mod, "_resolve_focus_body_id", lambda *a: 0)
+    monkeypatch.setattr(mod.mujoco, "MjData", lambda model: SimpleNamespace(xpos=np.zeros((1, 3))))
+    monkeypatch.setattr(mod.mujoco, "mj_setState", lambda *a: None)
+    monkeypatch.setattr(mod.mujoco, "mj_forward", lambda *a: None)
+    monkeypatch.setattr(mod.time, "sleep", lambda seconds: None)
+
+    class Viewer:
+        user_scn = SimpleNamespace(ngeom=0)
+        emitted = False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def is_running(self):
+            if self.emitted:
+                return False
+            self.emitted = True
+            thread = Thread(target=lambda: [self.key_callback(ord(key)) for key in "FRCN"])
+            thread.start()
+            thread.join(timeout=5)
+            assert not thread.is_alive()
+            assert mutations == [], "viewer callbacks must not mutate physics or reset the episode"
+            return True
+
+        def sync(self):
+            pass
+
+    def launch(model, data, *, key_callback):
+        viewer = Viewer()
+        viewer.key_callback = key_callback
+        return viewer
+
+    monkeypatch.setattr(mod.mujoco.viewer, "launch_passive", launch)
+    mod.play_interactive(args, cfg=cfg, algo="distill")
+    assert mutations == [("reset", owner_thread), ("step", owner_thread)]
+    assert force.force_for_step() is None

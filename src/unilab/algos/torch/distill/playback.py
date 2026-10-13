@@ -7,7 +7,7 @@ from typing import Any, Literal, cast
 import torch
 from torch import nn
 
-from .checkpoint import load_distillation_checkpoint
+from .checkpoint import restore_distillation_checkpoint
 from .models import MLPStudentPolicy
 from .moe_student import MoEStudentPolicy
 
@@ -88,7 +88,7 @@ def load_distillation_student_policy(
         ).to(device)
     else:
         raise ValueError(f"Unsupported distillation student_model_type: {model_type!r}")
-    checkpoint = load_distillation_checkpoint(policy, checkpoint_path, device=device)
+    checkpoint = restore_distillation_checkpoint(policy, raw)
     policy.eval()
     for param in policy.parameters():
         param.requires_grad_(False)

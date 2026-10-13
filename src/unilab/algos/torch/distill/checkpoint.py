@@ -69,9 +69,22 @@ def load_distillation_checkpoint(
     """Load a student-only distillation checkpoint."""
 
     checkpoint = torch.load(Path(path), map_location=device, weights_only=False)
+    return restore_distillation_checkpoint(
+        student, checkpoint, optimizer=optimizer, obs_normalizer=obs_normalizer
+    )
+
+
+def restore_distillation_checkpoint(
+    student: nn.Module,
+    checkpoint: Mapping[str, Any],
+    *,
+    optimizer: torch.optim.Optimizer | None = None,
+    obs_normalizer: nn.Module | None = None,
+) -> dict[str, Any]:
+    """Restore weights and optional state from one already-loaded snapshot."""
     student_state = checkpoint.get("student_state_dict")
     if student_state is None:
-        raise ValueError(f"Checkpoint does not contain student_state_dict: {path}")
+        raise ValueError("Checkpoint does not contain student_state_dict")
     student.load_state_dict(student_state, strict=True)
 
     optimizer_state = checkpoint.get("optimizer_state_dict")

@@ -113,6 +113,10 @@ class G1RecoveryCombinedEnv(G1WalkEnv):
             self, _CombinedResetProvider(base_kp=kp, base_kd=kd)
         )
 
+    def _uses_walk_observation_profile(self) -> bool:
+        """The combined student keeps canonical units regardless of reward terms."""
+        return True
+
     def _update_commands(self, info):
         super()._update_commands(info)
         active = update_recovery_route(

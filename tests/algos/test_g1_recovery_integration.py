@@ -382,3 +382,46 @@ def test_keyboard_observation_respects_recovery_settling_and_pending_requests():
     assert not recovery_command_obs_matches(info, obs[:, :98])
     inconsistent = {**info, "recovery_effective_commands": commands}
     assert not recovery_command_obs_matches(inconsistent, obs)
+
+
+@pytest.mark.parametrize("scales", [{"alive": 1.0}, {"tracking_lin_vel": 2.0}, {}])
+def test_combined_recovery_keeps_canonical_observation_units_when_rewards_change(scales):
+    from unilab.envs.locomotion.g1.recovery_combined import G1RecoveryCombinedEnv
+
+    env = G1RecoveryCombinedEnv.__new__(G1RecoveryCombinedEnv)
+    env._cfg = SimpleNamespace(
+        curriculum=SimpleNamespace(enabled=False),
+        mode_observation=False,
+        noise_config=SimpleNamespace(
+            scale_gyro=0, scale_gravity=0, scale_joint_angle=0, scale_joint_vel=0
+        ),
+        commands=SimpleNamespace(default_height=0.754),
+    )
+    env._reward_cfg = SimpleNamespace(scales=scales)
+    env.default_angles = np.zeros(29)
+    env._obs_noise = lambda value, scale: value
+    env._command_observation = lambda info, n: np.concatenate(
+        [info["commands"], info["height_commands"]], axis=1
+    )
+    env._gait_phase_for_observation = lambda info: np.zeros((1, 2))
+    env._mode_observation = lambda info: None
+    info = {
+        "commands": np.zeros((1, 3)),
+        "height_commands": np.full((1, 1), 0.754),
+        "recovery_active": np.array([True]),
+        "recovery_settle_remaining": np.zeros(1, dtype=np.int32),
+    }
+    obs = env._compute_obs(
+        info,
+        np.ones((1, 3)),
+        np.ones((1, 3)),
+        np.array([[0.0, 0.0, 1.0]]),
+        np.zeros((1, 29)),
+        np.ones((1, 29)),
+    )
+    assert obs["obs"].shape == (1, 99)
+    assert obs["critic"].shape == (1, 102)
+    for key in ("obs", "critic"):
+        np.testing.assert_allclose(obs[key][:, :3], 0.25)
+        np.testing.assert_allclose(obs[key][:, 35:64], 0.05)
+    np.testing.assert_allclose(obs["critic"][:, -3:], 2.0)
