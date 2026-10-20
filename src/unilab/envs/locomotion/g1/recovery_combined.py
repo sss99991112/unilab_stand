@@ -94,6 +94,7 @@ class _CombinedResetProvider(G1RecoveryResetProvider):
 @registry.env("G1RecoveryCombined", sim_backend="mujoco")
 class G1RecoveryCombinedEnv(G1WalkEnv):
     def __init__(self, cfg, num_envs=1, backend_type="mujoco"):
+        self._playback_recovery_route_deferred = False
         cfg.recovery.validate(float(cfg.commands.default_height), float(cfg.ctrl_dt))
         cfg.recovery_routing.validate(cfg.recovery)
         if not cfg.commands.observe_height_command or cfg.mode_observation:
@@ -113,12 +114,42 @@ class G1RecoveryCombinedEnv(G1WalkEnv):
             self, _CombinedResetProvider(base_kp=kp, base_kd=kd)
         )
 
+    def defer_playback_recovery_routing(self, enabled: bool) -> None:
+        """Transfer routing to a one-env playback session; action execution stays here."""
+        if not isinstance(enabled, bool) or (enabled and self.num_envs != 1):
+            raise ValueError("deferred playback routing requires one environment and a boolean")
+        self._playback_recovery_route_deferred = enabled
+
+    def recovery_playback_state(self) -> dict:
+        """Measured policy/control-frame state through declared backend APIs."""
+        feet = (
+            np.column_stack(
+                [
+                    compute_aggregated_foot_contact(self._backend, names)
+                    for names in (LEFT_FOOT_CONTACT_SENSORS, RIGHT_FOOT_CONTACT_SENSORS)
+                ]
+            )
+            > 0
+        )
+        return dict(
+            height=np.float32(self._terrain_relative_base_height()[0]),
+            upvector=self._backend.get_sensor_data(self.cfg.sensor.upvector)[0].copy(),
+            linvel=self.get_local_linvel()[0].copy(),
+            gyro=self.get_gyro()[0].copy(),
+            q=self.get_dof_pos()[0].copy(),
+            dq=self.get_dof_vel()[0].copy(),
+            feet=feet[0],
+        )
+
     def _uses_walk_observation_profile(self) -> bool:
         """The combined student keeps canonical units regardless of reward terms."""
         return True
 
     def _update_commands(self, info):
         super()._update_commands(info)
+        if self._playback_recovery_route_deferred:
+            # The opt-in playback session consumes physical frames, not refreshes.
+            return
         active = update_recovery_route(
             info,
             height=self._terrain_relative_base_height(),

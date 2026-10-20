@@ -185,6 +185,7 @@ interactive:
   push_force_world: [150.0, 0.0, 0.0]
   push_body_name: torso_link
   require_keyboard_command_obs: true
+  standing_assist: false
   distill_command_routing: auto
   distill_command_xy_threshold: 0.05
   distill_command_yaw_threshold: 0.05

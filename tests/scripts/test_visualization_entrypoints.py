@@ -597,3 +597,25 @@ def test_native_viewer_keys_are_handled_on_simulation_thread(monkeypatch):
     mod.play_interactive(args, cfg=cfg, algo="distill")
     assert mutations == [("reset", owner_thread), ("step", owner_thread)]
     assert force.force_for_step() is None
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_play_interactive_standing_assist_config_reaches_formal_factory(enabled):
+    mod = _load_script("play_interactive")
+    parsed = mod._parse_interactive_cli(
+        [
+            "--algo",
+            "distill",
+            "--task",
+            "g1_recovery_combined",
+            "--sim",
+            "mujoco",
+            "interactive.action_mode=policy",
+            f"interactive.standing_assist={str(enabled).lower()}",
+        ]
+    )
+    cfg = mod._compose_interactive_config(parsed.algo, parsed.overrides)
+    args = mod._build_play_args(cfg, algo=parsed.algo)
+    assert cfg.interactive.standing_assist is enabled
+    assert cfg.training.task_name == "G1RecoveryCombined"
+    assert args.action_mode == "policy"

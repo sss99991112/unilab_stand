@@ -2845,3 +2845,50 @@ or policy-quality conclusion is authorized.
   27d06b8d73734fb2a17c730aa63ff70b2ba4ffbef7d3d71373df43974ab9bf18.
   No training, optimization, teacher/reward/guard changes or model upload.
   Formal multi-seed perturbation and broad pose reliability remain pending.
+
+
+## E136: Matched simulation recovery hardware-load audit (2026-10-15)
+
+- Authority: user targets a 29-DoF Unitree G1, reports prior successful policy
+  deployment, and approves a simulation load audit. No training/reward/routing
+  changes or hardware commands are authorized or executed by this audit.
+- Identity: baseline HEAD `e1717b9462f74fcccb430889d36ecf121a1fe1e5` with the
+  local playback-model snapshot fix below. Student remains E132's SHA
+  `27d06b8d73734fb2a17c730aa63ff70b2ba4ffbef7d3d71373df43974ab9bf18`.
+  Recovery teacher SHA `9f9fa902e6228c93e26e319505bfec584632b38129b35471d04038ad64047bbd`;
+  old student SHA `4d9eed26b39a875a2475289f84a40949a95c3a7d5a618b7110f90df051fae6fe`.
+  All weights unchanged before/after. No model uploaded.
+- Scope: 20 paired seeds, 15 s, three controllers: adapted SAC recovery actor
+  throughout; recovery actor then original stand expert; unified student.
+  Same combined environment, supine reset, zero command, no assistance/push/reset.
+  Initial state/actor observations/randomized physics match exactly per seed.
+  The first .6 s includes reset drop and is reported separately.
+- First invalid measurement boundary: nominal playback model omitted live pool
+  reset PD randomization, causing .0312 maximum first-control replay mismatch.
+  Explicit env-index getter now returns an independently owned parameter snapshot;
+  default getter is unchanged. A discarded borrowed-native-model attempt aborted
+  during teardown; the accepted copy implementation avoids native ownership.
+  The native root cause is not claimed resolved. Ten focused regressions, Ruff
+  check/format and diff checks PASS. No full-repository test claim.
+- Measurement proof: independent replay of all 45,000 native control intervals
+  matches terminal FULLPHYSICS states after float32 casting with max error 0;
+  135,000 substeps sample actual actuator forces and mj_contactForce. Clipped PD
+  formula agrees within 1e-6 N m. Live gains/physical fields and source hashes
+  are retained with the diagnostic patch and scripts.
+- Findings: ankle-roll targets exceed model ranges by up to 42.24 deg teacher,
+  41.82 deg student. Post-.6s speed peaks 28.41/23.10 rad/s; worst single-wrist
+  saturation fractions 21.71/18.75 percent. Teacher left-knee/right-ankle contact
+  peaks 10.57 kN; student wrist/torso 1.45 kN. Key peaks occur during Recovery,
+  before nominal handover. These are simulation quantities; torque clipping,
+  solver force and soft joint-limit penetration are not hardware safe ratings.
+- Descriptive stable >=1s counts are 16/20 teacher and teacher->old stand,
+  10/20 student in this new protocol. They do not replace historical E132 or
+  teacher-selection acceptance, whose reset/noise procedure/horizon differs.
+  No policy promotion or real-robot acceptance follows from this audit.
+- Local evidence: `.local-build/g1_recovery_moe/hardware_load_audit_20261015/`:
+  REPORT.md, comparison PNG/PDF, audit/summary/provenance JSON, CSV tables,
+  60 per-episode JSON/NPZ traces, scripts and measurement_backend.patch.
+- Next boundary: inspect existing deployment mapping and actual hardware
+  capabilities/allowed support contacts; propose bounded recovery-teacher
+  constraints before retraining or student distillation. Existing walk/stand
+  experts remain retained. Training stays paused pending user direction.

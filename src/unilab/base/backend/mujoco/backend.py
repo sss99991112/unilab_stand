@@ -1,3 +1,4 @@
+import copy
 import os
 import tempfile
 import time
@@ -1186,15 +1187,42 @@ class MuJoCoBackend(SimBackend):
             env_index: Optional vectorized environment index.
 
         Returns:
-            The MuJoCo model assigned to that env, or the current backend model
-            when no explicit index is requested.
+            An independently owned snapshot of the live per-env parameters after
+            materialization, or its assigned variant before materialization.
+            With no explicit index, return the current nominal backend model.
         """
         if env_index is None:
             return self._model
         idx = int(env_index)
         if idx < 0 or idx >= self._num_envs:
             raise IndexError(f"env_index must be in [0, {self._num_envs - 1}], got {idx}")
-        return self._model_variants[int(self._model_assignments[idx])]
+        source = self._model_variants[int(self._model_assignments[idx])]
+        if self._pool is None:
+            return source
+
+        # Diagnostics need the reset-randomized parameters, not nominal variants.
+        # Copy arrays into an independently owned model; never borrow pool models.
+        model = copy.copy(source)
+        for name in (
+            "body_mass",
+            "body_ipos",
+            "body_iquat",
+            "body_inertia",
+            "dof_armature",
+            "geom_friction",
+        ):
+            target = getattr(model, name)
+            target[:] = self._pool.get_field(idx, name).reshape(target.shape)
+        model.opt.gravity[:] = self._pool.get_field(idx, "gravity")
+        kp = self._pool.get_field(idx, "kp")
+        kd = self._pool.get_field(idx, "kd")
+        if not (
+            np.array_equal(kp, model.actuator_gainprm[:, 0])
+            and np.array_equal(kd, -model.actuator_biasprm[:, 2])
+        ):
+            _apply_position_actuator_gains_to_mj_model(model, kp=kp, kd=kd)
+        mujoco.mj_setConst(model, mujoco.MjData(model))
+        return model
 
     def _coerce_reset_field(
         self,

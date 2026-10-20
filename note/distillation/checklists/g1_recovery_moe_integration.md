@@ -25,7 +25,9 @@ Active method: `DISTILL-METHOD-v004`; runtime: `DISTILL-TRAIN-v003`.
 | Persistent recovery scenario | runtime | UNSUPPORTED | Rejected; new profile explicitly uses legacy |
 | Manual keyboard recovery playback | playback / native launcher | PASS (bounded + native UI) | E133: 58 targeted checks; real forward/stop/height/recovery reset action parity; native key callbacks observed; unrelated tee-output check fails |
 | Physical push / force clear without reset | NpEnv / playback commander | PASS (bounded) | E135: 100 tests, actual rigid-body acceleration/clear proof, continuous G1 walking-push-fall-recovery episode with no reset; stable handover not accepted |
-| Real-robot guard and export | deployment | PENDING | Height/support state guard currently uses MuJoCo sensors |
+| Default-OFF formal standing assist playback | playback / combined env / controller | PASS (bounded integration only) | 2026-10-20: 94 tests; 5650 native control steps / 16950 physical substeps; OFF exact; one action commit; seven original-budget ON cases; seed2 partial assist then load fallback, 3.82/5.82 s handover/settle; wrist/self-contact costs remain. `.local-build/g1_standing_assist/formal_verified_20261020/REPORT.md` |
+| Matched simulation load audit | MuJoCo diagnostic snapshot / recovery actors | PASS (diagnosis only) | E136: 60 episodes, exact replay, ankle target violations / wrist saturation / self-contact; no hardware safety acceptance |
+| Real-robot guard and export | deployment | PENDING | E136 identifies recovery-load issues; prior deployment experience reported, actual limits/mapping and real-robot recovery remain unverified |
 
 Baseline-only diagnostic tests remain failed: nine runtime trace tests reproduce
 on unmodified `cd9f895c`; do not report the entire repository test suite as passing.

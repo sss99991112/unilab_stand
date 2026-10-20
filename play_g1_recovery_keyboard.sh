@@ -18,12 +18,16 @@ while [ "$#" -gt 0 ]; do
             CHECKPOINT_PATH="$2"
             shift 2
             ;;
+        --standing-assist)
+            EXTRA_ARGS+=("interactive.standing_assist=true")
+            shift
+            ;;
         --supine)
             SUPINE=true
             shift
             ;;
         --help|-h)
-            echo "Usage: bash play_g1_recovery_keyboard.sh [--checkpoint-path FILE] [--supine] [--dry-run] [Hydra overrides]"
+            echo "Usage: bash play_g1_recovery_keyboard.sh [--checkpoint-path FILE] [--supine] [--standing-assist] [--dry-run] [Hydra overrides]"
             exit 0
             ;;
         *)

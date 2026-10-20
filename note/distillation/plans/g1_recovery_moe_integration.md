@@ -219,3 +219,34 @@ bash play_g1_recovery_keyboard.sh 'interactive.push_force_world=[0,100,0]'
 不使用推力时加 `interactive.push_force_enabled=false`。训练、reward、
 稳定门槛和模型参数保持原样。E135 的单回合受推检查验证物理连接，
 不代表多姿态恢复成功率或可靠性验收。
+
+
+## 正式播放的默认关闭渐进协助（2026-10-20）
+
+源正式播放现可显式开启已有20帧协助和逐帧负荷回退，保留原入口：
+
+```bash
+# 原入口，默认关闭协助
+bash play_g1_recovery_keyboard.sh --supine
+# 显式开启；仍默认暂停，空格开始，原键盘/F-C推力/R重置继续可用
+bash play_g1_recovery_keyboard.sh --standing-assist --supine
+# 仅检查启动参数
+bash play_g1_recovery_keyboard.sh --standing-assist --supine --dry-run
+```
+
+配置为 `interactive.standing_assist: false`。ON 使用 CPU、单环境和原
+G1RecoveryCombined 三专家恢复学生；原99维观测、29动作、PD和50帧稳定
+门槛保持。选择器仅生成原始动作，原 env.step 独占 apply_action，避免重复
+默认角偏置、历史写入或相位推进。原独立实验 decide() API 保留。
+
+新播放默认噪声/随机化设置不变。定向94测试和原预算正式 native 回归
+5650控制步通过；七个ON场景包括三个仰躺种子、普通站立、低站高、行走、
+无重置受推。低站高原偏差仍在，行走不按静站条件判成功。seed2 1.78s
+开始协助、2.02s负荷回退，仅实际执行到alpha .60，随后3.82s释放、5.82s
+等待结束；并非完整走完20帧。150Hz记录仍显示腕饱和增加和自碰撞代价。
+
+完整结果及复现命令见
+`.local-build/g1_standing_assist/formal_verified_20261020/REPORT.md`。
+这是小预算、nominal无噪声的接入验收；不取代E132可靠性评测，未做新ON
+图形窗口手工验收、广泛噪声/DR或真机测试。本阶段训练保持暂停，不发布源
+GitHub、不改权重。去掉 --standing-assist 或设置false可回原路径。

@@ -1414,10 +1414,26 @@ def create_distill_playback_session(
 ) -> tuple[RslRlPlaybackSession, str, str | None]:
     """Create a playback session for generic distillation student checkpoints."""
 
+    assist = _cfg_select(cfg, "interactive.standing_assist", False)
+    if not isinstance(assist, bool):
+        raise TypeError("interactive.standing_assist must be boolean")
+    if assist and (
+        playback_cfg.action_mode != "policy"
+        or playback_cfg.num_envs != 1
+        or str(device or "cpu") != "cpu"
+        or str(getattr(cfg.training, "task_name", "")) != "G1RecoveryCombined"
+    ):
+        raise ValueError(
+            "standing assist requires G1RecoveryCombined, one env and CPU policy playback"
+        )
+    student = None
+
     resolved_deps = dict(_default_distill_playback_deps(root_dir) if deps is None else deps)
     device_name = select_torch_device() if device is None else str(device)
     checkpoint = resolved_deps["resolve_checkpoint"](playback_cfg, cfg, root_dir)
     checkpoint_path = str(checkpoint) if checkpoint is not None else None
+    if assist and (checkpoint is None or not Path(checkpoint).is_file()):
+        raise ValueError("standing assist requires an existing recovery student checkpoint")
     policy_obs_mode = playback_cfg.policy_obs_mode
     if policy_obs_mode == "auto":
         policy_obs_mode = "actor"
@@ -1669,6 +1685,22 @@ def create_distill_playback_session(
         policy=policy,
         num_envs=playback_cfg.num_envs,
     )
+    if assist:
+        if student is None or not bool(runtime_cfg.get("recovery_integration", False)):
+            raise ValueError("standing assist requires a valid recovery student checkpoint")
+        if obs_normalizer_keys:
+            raise ValueError("standing assist requires the canonical unnormalized 99-D student")
+        from unilab.visualization.standing_assist_playback import StandingAssistPlaybackSession
+
+        session = StandingAssistPlaybackSession(
+            env=env,
+            wrapped_env=wrapped_env,
+            device=device_name,
+            action_mode=playback_cfg.action_mode,
+            policy=policy,
+            num_envs=playback_cfg.num_envs,
+            student=student.policy,
+        )
     return session, policy_obs_mode, checkpoint_path
 
 
