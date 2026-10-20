@@ -16,6 +16,7 @@ Plans under `plans/` are excluded from default recall:
 | --- | --- |
 | `plans/concept_figure_causal_spine_design.md` | selected design was implemented and verified |
 | `plans/concept_figure_causal_spine_implementation.md` | implementation checklist completed |
+| `plans/g1_recovery_moe_training_commands.md` | original bootstrap/continuation/failure-recovery commands; training is paused and current playback has a separate guide |
 | `plans/checkpoint_acceptance_proposal.md` | acceptance lifecycle was absorbed into the current single-entry workflow proposal |
 
 Archived plans cannot override the Concept Figure, active contract, current

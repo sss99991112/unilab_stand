@@ -1,109 +1,62 @@
-# Distillation Task Canvas
+# Current G1 recovery task
 
-## Objective And Accepted Method
+Goal: retain working three-expert simulation recovery while reducing recovery
+loads before any real-robot acceptance.
 
-Use one 99-D, 29-action MoE student: Walk=0, StandHeight=1, Recovery=2.
-Accepted route: existing teachers retained, student learned by MoE/DAgger.
-Authority: `contracts/active/method/DISTILL-METHOD-v004.md` and inherited
-`contracts/active/training/DISTILL-TRAIN-v003.md`.
+Do not: restart training, change weights/reward/PD/the original 50-frame stable
+gate, connect hardware, or equate a video/bounded simulation with reliability.
 
-## Current Cursor — 2026-10-20
+## Current identity
 
-Completed the user's source-library formal simulation/keyboard playback
-integration, default OFF. Source branch `codex/g1-standing-assist-sim`, parent
-`e1717b94`; the user authorized a local Git commit on 2026-10-20.
-No source GitHub publication is authorized. Reused the existing independent
-20-frame assist and per-frame load fallback, preserving the old `decide()` API
-and all prior diagnostic work. No training, reward/PD/50-frame gate change,
-hardware connection, weight modification or source GitHub publication.
+- UniLab 0.1.0: `/Users/sss9999/enbodied_intelligence/unilab/unilab_stand`.
+- Active branch: `codex/g1-standing-assist-sim`; feature commit `bfdae68a`
+  is published on the same GitHub branch. Subsequent cleanup is documentation
+  and local housekeeping only; use Git for the exact current tip.
+- Frozen 99-D/29-action student: project-parent `dagger_iteration_2.pt`, original
+  round 6, SHA `27d06b8d73734fb2a17c730aa63ff70b2ba4ffbef7d3d71373df43974ab9bf18`.
+- RoboJudo published reference: `6e57327`; unchanged by this source work.
 
-`bash play_g1_recovery_keyboard.sh --standing-assist --supine` opts in;
-without `--standing-assist`, original playback is retained. The session selects
-raw actions; the original `env.step` alone applies default-angle bias, phase and
-action history. Reset/pause/preview/dryrun boundaries and actual reset-randomized
-gains are covered by 94 focused passing tests. These do not establish a full
-repository pass or new GUI manual acceptance.
+## Confirmed decisions
 
-Fresh formal-factory/native-step evidence: 12 nominal/no-noise episodes,
-5650 control steps / 16950 150-Hz physics substeps. Missing flag and explicit
-OFF match exactly; ordinary stand/low-height/walk match OFF with ON. All ON
-same-state decisions, phases/history and replayed physics match their reference.
-Seven ON scenarios use the original budgets. Seed2 releases at 3.82 s and ends
-settle at 5.82 s, after a 2.02 s load fallback; applied alpha reaches only 0.60,
-not a completed 20-frame blend. Left wrist pitch/yaw each add two saturated
-150-Hz samples; late self-contact increases. Recovery-load problems remain.
+- Walk=0, StandHeight=1, Recovery=2; retain teachers and inherited MoE/DAgger.
+- Standing assistance is opt-in simulation only. Old playback stays default.
+  `bash play_g1_recovery_keyboard.sh --standing-assist --supine` opts in.
+- Training remains paused. The user reports earlier hardware policy deployment;
+  this does not establish safe full-body recovery.
+- Original E132 student acceptance is 8/20 stable handovers. The different E136
+  protocol and the current small regression do not replace it.
 
-Report and raw evidence:
-`.local-build/g1_standing_assist/formal_verified_20261020/REPORT.md`.
-The independent evaluator's rerun remains exactly equal to its original seed2
-trajectory. Native float32-between-controls trajectories differ from standalone
-float64 trajectories; compare them by same-state decisions, not by replacing
-historical closed-loop numbers. RoboJudo's published `6e57327` is unchanged.
+## Progress
 
-## Earlier E136 Audit — retained
+- [x] Native playback integration — one env.step action commit per frame;
+  preserved independent decide API and reset/pause/preview behavior.
+  Evidence: 94 focused tests plus 2 backend snapshot regressions; all 11 changed
+  Python files pass Ruff check/format, shell/diff checks pass. `make check`
+  attempted on an isolated copy; type checks cannot start without mypy.
+- [x] Original-budget OFF/ON regression — 12 nominal/no-noise episodes,
+  5650 native control steps / 16950 physical substeps. OFF exact; ordinary
+  stand/low-height/walk exact with ON; same-state ON obs/action/phase/route and
+  independent physical replay exact.
+  Evidence: `.local-build/g1_standing_assist/formal_verified_20261020/REPORT.md`.
+- [x] Preserve original diagnostics — E136's 60 paired audit episodes identify
+  recovery ankle/wrist/self-contact loads. Getter fix and tests are now included
+  in feature commit bfdae68a. Historical evidence stays in `evidence/current.md`.
+- [x] Repository cleanup — keep one active local branch, preserve the remote
+  default/baseline refs; archive intermediate formal runs outside the repo;
+  remove duplicate ignore entries and separate historical training commands
+  from the current playback guide. No model or unique evidence is deleted.
 
-The user considers the simulation task completed and explicitly targets real
-deployment on a Unitree G1, 29 DoF. They report having successfully deployed
-policies previously; do not ask again whether low-level access exists.
-That experience does not establish safe full-body recovery behavior.
+## Remaining boundary
 
-E136 completes the authorized simulation load audit: 20 matched seeds x three
-controllers (recovery teacher, teacher then old stand expert, unified student),
-15 s each. State/obs/physics pairing passes. Independent 150-Hz force sampling
-replays all 45,000 native control steps exactly. Teacher and student both show
-ankle targets beyond model range, wrist saturation and body self-contact;
-major peaks are in Recovery, rather than only at expert handover. Model limits
-and contact forces are simulation parameters, not verified hardware ratings.
+Seed2 starts assist at 1.78 s, falls back for load at 2.02 s (max applied alpha
+0.60), releases at 3.82 s and ends settle at 5.82 s. It does not complete the
+20-frame blend. Left wrist pitch/yaw each add 2 saturated 150-Hz samples;
+4–15 s self-contact peak rises 15.36 to 20.21 N. Earlier recovery ankle target
+excess and large force/contact peaks remain. GUI ON manual checks, broad
+noise/DR/initial-state/repeated-fall reliability and hardware are unverified.
 
-Evidence/report:
-`.local-build/g1_recovery_moe/hardware_load_audit_20261015/REPORT.md`.
-A necessary diagnostic snapshot getter fix plus two regression tests are local,
-uncommitted; 10 focused tests and Ruff/diff checks pass. No new training,
-reward/routing change, hardware command, checkpoint rewrite or GitHub push.
+## Next
 
-## Candidate And Preserved History
-
-- Current student: `/Users/sss9999/enbodied_intelligence/unilab/dagger_iteration_2.pt`.
-  SHA `27d06b8d73734fb2a17c730aa63ff70b2ba4ffbef7d3d71373df43974ab9bf18`.
-  This is continuation round 2 / original round 6. Server completion lineage,
-  interrupted update and fresh-process load results remain E127-E132. The
-  original child failure was not reproduced; do not claim its cause is proven.
-- Training was explicitly paused (E131). Server process stop is unconfirmed
-  because this session has no remote execution channel. No restart authorized.
-- E132: original local reliability evaluation 8/20 stable handovers, all briefly
-  upright; tested old capabilities show no clear regression. E136 uses another
-  reset/noise protocol; its 10/20 student stable count does not replace E132.
-- E133/E134: keyboard playback and moved model identity. E135: F/C physical
-  push/clear without reset, one true walking-push-fall-recovery trial. R is a
-  diagnostic supine reset; repeated falls and return-to-walk remain unaccepted.
-
-## Next Boundary
-
-This authorized formal-entry integration and bounded regression are complete.
-Next investigate recovery ankle targets, wrist saturation and self-contact,
-then broader initial-state/noise/DR and repeated-fall behavior, with a separately
-agreed scope. The current opt-in simulation result is not hardware acceptance.
-Training remains paused; no new training or hardware action is authorized.
-
-## Future Hardware Boundary — unchanged
-
-Review the previously successful hardware deployment program: joint ordering,
-offsets, action scaling, PD gains, real limits/torque-speed capability, and
-permitted support contacts. Then propose a bounded recovery-teacher correction
-for ankle targets, wrist loads and self-contact, preserving old walk/stand
-experts. Any controller/reward edits, retraining, new DAgger or hardware trial
-await the user's next instruction. No arbitrary safe-load threshold or
-simulation-success-to-hardware-safety promotion is accepted.
-
-## Current Files
-
-- Workflow: `conf/distill/workflow/g1_stand_height_walk_recovery.yaml`.
-- Owners: `recovery_integration.py`, `g1_observation_adapter.py`,
-  `recovery_workflow.py`, `recovery_combined.py`, `scripts/train_distill.py`.
-- Keyboard inspection: `bash play_g1_recovery_keyboard.sh`; opt-in assist:
-  `bash play_g1_recovery_keyboard.sh --standing-assist --supine`.
-- Formal adapter: `src/unilab/visualization/standing_assist_playback.py`.
-- Bounded verifier: `scripts/verify_g1_standing_assist_playback.py`.
-- Plan: `plans/g1_recovery_moe_integration.md`.
-- Checklist: `checklists/g1_recovery_moe_integration.md`.
-- Evidence: E122-E136 in `evidence/current.md` and `.local-build/g1_recovery_moe/`.
+Propose the smallest bounded ankle/wrist/self-contact correction, using the
+existing 150-Hz evidence. Implementation, training and hardware scope require
+the user's next instruction. Current use: [playback guide](plans/g1_recovery_moe_integration.md).

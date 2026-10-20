@@ -89,7 +89,6 @@ src/unilab/assets/checkpoints/**/*.onnx
 
 # Backend temp XML emitted next to robot.xml (motrix/mujoco scene materialization)
 src/unilab/assets/robots/**/tmp*.xml
-dagger_iteration_8.pt
-g1-walk-stand-native-heap-trace-r5-console.log
-g1-walk-stand-native-heap-trace-r5-console.log
-logs
+# Local evaluation traces, build output and root-level model checkpoints
+/.local-build/
+/*.pt
