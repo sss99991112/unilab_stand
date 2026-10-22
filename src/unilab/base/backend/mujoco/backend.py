@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from multiprocessing import cpu_count, current_process, get_context
-from typing import Any, Optional, cast
+from typing import TYPE_CHECKING, Any, Optional, cast
 
 import mujoco
 import numpy as np
@@ -42,6 +42,9 @@ from ..base import (
     normalize_play_render_mode,
 )
 from .playback import run_mujoco_playback
+
+if TYPE_CHECKING:
+    from .recovery_load_metrics import RecoveryLoadSampler
 
 
 def _root_state_dims(model) -> tuple[int, int]:
@@ -268,6 +271,8 @@ def _build_mujoco_scene_context(scene: SceneCfg) -> _MuJoCoSceneContext:
 class MuJoCoBackend(SimBackend):
     """MuJoCo backend implementation."""
 
+    _recovery_load_sampler: "RecoveryLoadSampler | None" = None
+
     def __init__(
         self,
         scene: SceneCfg,
@@ -320,6 +325,7 @@ class MuJoCoBackend(SimBackend):
         self._model_variants: tuple[mujoco.MjModel, ...] = (self._model,)
         self._model_assignments = np.zeros((num_envs,), dtype=np.int32)
         self._pool: BatchEnvPool | None = None
+        self._recovery_load_sampler = None
 
         # State indices.
         self.nq = self._model.nq
@@ -775,7 +781,32 @@ class MuJoCoBackend(SimBackend):
     # Simulation control                                                 #
     # ------------------------------------------------------------------ #
 
+    def configure_recovery_load_metrics(self, body_pairs: Sequence[Sequence[str]]) -> None:
+        from .recovery_load_metrics import RecoveryLoadSampler
+
+        if self._pre_step_control_fn is not None:
+            raise ValueError("recovery load replay requires direct position control")
+        self._recovery_load_sampler = RecoveryLoadSampler(
+            [self.get_playback_model(i) for i in range(self._num_envs)], body_pairs
+        )
+
+    def get_recovery_load_metrics(self) -> dict | None:
+        return None if self._recovery_load_sampler is None else self._recovery_load_sampler.read()
+
     def step(self, ctrl: np.ndarray, nsteps: int = 1) -> dict | None:
+        sampler = self._recovery_load_sampler
+        if sampler is None:
+            return self._step_native(ctrl, nsteps)
+        if self._pre_step_control_fn is not None:
+            raise ValueError("recovery load replay cannot accompany a control converter")
+        before, force = self._physics_state.copy(), self._pending_xfrc_applied.copy()
+        result = self._step_native(ctrl, nsteps)
+        t0 = time.perf_counter()
+        sampler.capture(before, ctrl, force, self._physics_state, nsteps)
+        result["timing"]["recovery_load_replay_ms"] = (time.perf_counter() - t0) * 1000.0
+        return result
+
+    def _step_native(self, ctrl: np.ndarray, nsteps: int = 1) -> dict:
         if self._pre_step_control_fn is not None:
             return self._step_with_pre_step_control(ctrl, nsteps)
 
@@ -886,6 +917,9 @@ class MuJoCoBackend(SimBackend):
 
         self._physics_state[env_indices] = state_out.astype(self._np_dtype)
         self._sensor_data[env_indices] = sensor_np.astype(self._np_dtype)
+        if self._recovery_load_sampler is not None:
+            for i in env_indices:
+                self._recovery_load_sampler.replace_model(int(i), self.get_playback_model(int(i)))
 
     def get_dr_capabilities(self) -> DomainRandomizationCapabilities:
         return DomainRandomizationCapabilities(

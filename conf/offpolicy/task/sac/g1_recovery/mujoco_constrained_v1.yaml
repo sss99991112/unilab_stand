@@ -1,0 +1,36 @@
+# @package _global_
+# Opt-in load-quality experiment. The owner flag is OFF until explicitly enabled.
+defaults:
+  - /task/sac/g1_recovery/mujoco_unassisted_v2
+  - _self_
+training:
+  no_play: true
+algo:
+  num_envs: 32
+  batch_size: 1024
+  replay_buffer_n: 512
+  updates_per_step: 1
+  learning_starts: 64
+  policy_frequency: 1
+  max_iterations: 5000
+  save_interval: 500
+  actor_lr: 1.0e-5
+  actor_warm_start_checkpoint: null
+  actor_warm_start_adapter: g1_recovery_load_actor_99_v1
+  actor_warm_start_expected_sha256: 9f9fa902e6228c93e26e319505bfec584632b38129b35471d04038ad64047bbd
+env:
+  recovery_constraints:
+    enabled: false
+    version: g1_recovery_load_reward_v1
+    boundary_margin_rad: 0.05
+    outward_speed_scale: 5.0
+    contact_force_scale_n: 100.0
+    body_pairs:
+      - [right_hip_yaw_link, right_wrist_pitch_link]
+      - [left_elbow_link, torso_link]
+reward:
+  scales:
+    recovery_joint_boundary: -1.0
+    recovery_outward_speed: -0.2
+    recovery_pd_excess: -0.2
+    recovery_self_collision: -0.2

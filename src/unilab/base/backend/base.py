@@ -244,6 +244,18 @@ class SimBackend(abc.ABC):
             per-phase timings in milliseconds.
         """
 
+    def configure_recovery_load_metrics(self, body_pairs: Sequence[Sequence[str]]) -> None:
+        """Enable exact per-physics-step q/dq/raw-PD and explicit self-pair loads.
+
+        Cold-path opt-in; unsupported backends must fail closed. Actor sensors,
+        control and physical model are not changed. Ground is never a self-pair.
+        """
+        raise NotImplementedError("backend does not provide exact recovery load metrics")
+
+    def get_recovery_load_metrics(self) -> dict | None:
+        """Latest completed interval's privileged metrics, or None before a step."""
+        raise NotImplementedError("backend does not provide exact recovery load metrics")
+
     def set_pre_step_control(self, fn: PreStepControlFn | None) -> None:
         """Register an env-owned policy-control to physics-control converter.
 

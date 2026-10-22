@@ -25,6 +25,11 @@ def validate_recovery_training_config(cfg: DictConfig) -> None:
     """Cross-stage actor transfer or explicit same-task learner restoration."""
     if OmegaConf.select(cfg, "training.task_name") != "G1Recovery":
         return
+    if OmegaConf.select(cfg, "env.recovery_constraints.enabled", default=False):
+        from unilab.training.g1_recovery_refinement import validate_refinement_config
+
+        validate_refinement_config(cfg)
+        return
     current = _assistance(cfg)
     if bool(OmegaConf.select(cfg, "training.play_only", default=False)):
         return

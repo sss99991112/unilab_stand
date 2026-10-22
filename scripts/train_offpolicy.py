@@ -184,8 +184,16 @@ def apply_configured_actor_warm_start(
         validate_recovery_training_config(cfg)
     elif str(cfg.training.task_name) != "G1StandHeight":
         raise ValueError("G1 height actor adapter may only initialize G1StandHeight")
+    from unilab.training.g1_recovery_refinement import REFINEMENT_ADAPTER, load_refinement_actor
+
+    if adapter_id == REFINEMENT_ADAPTER and (
+        str(cfg.training.task_name) != "G1Recovery"
+        or not OmegaConf.select(cfg, "env.recovery_constraints.enabled", default=False)
+    ):
+        raise ValueError("the refinement adapter requires the enabled recovery constraints owner")
     loaders = {
         G1_HEIGHT_ACTOR_ADAPTER_ID: load_g1_height_actor_warm_start,
+        REFINEMENT_ADAPTER: load_refinement_actor,
         G1_HEIGHT_ACTOR_CONTINUATION_ADAPTER_ID: (load_g1_height_actor_continuation_warm_start),
     }
     if adapter_id not in loaders:
@@ -719,6 +727,9 @@ def main(cfg: DictConfig) -> None:
     validate_recovery_training_config(cfg)
     if not cfg.training.play_only:
         validate_configured_learner_resume(cfg)
+        from unilab.training.g1_recovery_refinement import validate_fresh_refinement_output
+
+        validate_fresh_refinement_output(cfg)
 
     seed_info = apply_configured_training_seed(cfg, torch_runtime=True, cuda=True)
     algo_name = cfg.algo.algo

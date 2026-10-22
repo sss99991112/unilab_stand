@@ -28,6 +28,7 @@ from unilab.envs.locomotion.g1.joystick import (
 )
 
 from .recovery_assistance import RecoveryAssistanceCfg, assistance_force_rows
+from .recovery_constraints import CONSTRAINT_TERMS, RecoveryConstraintsCfg, constraint_reward_terms
 
 
 @dataclass
@@ -87,6 +88,7 @@ def _recovery_commands() -> Commands:
 class G1RecoveryCfg(G1WalkFlatCfg):
     recovery: RecoveryConfig = field(default_factory=RecoveryConfig)
     assistance: RecoveryAssistanceCfg = field(default_factory=RecoveryAssistanceCfg)
+    recovery_constraints: RecoveryConstraintsCfg = field(default_factory=RecoveryConstraintsCfg)
     commands: Commands = field(default_factory=_recovery_commands)
     reward_config: G1RewardConfig | None = None
     curriculum: CurriculumConfig = field(default_factory=CurriculumConfig)
@@ -194,6 +196,7 @@ class G1RecoveryEnv(G1WalkEnv):
     def __init__(self, cfg: G1RecoveryCfg, num_envs: int = 1, backend_type: str = "mujoco"):
         cfg.recovery.validate(float(cfg.commands.default_height), float(cfg.ctrl_dt))
         cfg.assistance.validate()
+        cfg.recovery_constraints.validate()
         if cfg.mode_observation or not cfg.commands.observe_height_command:
             raise ValueError("G1Recovery requires the 99-D height-aware observation profile")
         if cfg.curriculum.enabled or cfg.stand_action_authority:
@@ -216,6 +219,7 @@ class G1RecoveryEnv(G1WalkEnv):
             "recovery_action_rate",
             "recovery_joint_speed",
         }
+        supported.update(CONSTRAINT_TERMS)
         unknown = set(cfg.reward_config.scales) - supported
         if unknown:
             raise ValueError(f"Unknown recovery reward terms: {sorted(unknown)}")
@@ -233,6 +237,21 @@ class G1RecoveryEnv(G1WalkEnv):
             self,
             G1RecoveryResetProvider(base_kp=kp, base_kd=kd),
         )
+
+        if cfg.recovery_constraints.enabled:
+            if not np.isclose(cfg.ctrl_dt, 0.02) or cfg.sim_substeps != 3:
+                raise ValueError("constraint v1 requires 50Hz control and 150Hz physics")
+            if cfg.control_config.action_scale != 1.0 or cfg.control_config.simulate_action_latency:
+                raise ValueError("constraint v1 preserves direct unit-scale action semantics")
+            if cfg.assistance.effective_fraction != 0:
+                raise ValueError("constrained recovery requires unassisted physics")
+            for name in CONSTRAINT_TERMS:
+                if (
+                    not np.isfinite(cfg.reward_config.scales.get(name, 0))
+                    or cfg.reward_config.scales.get(name, 0) >= 0
+                ):
+                    raise ValueError("enabled constraints require all four negative reward scales")
+            self._backend.configure_recovery_load_metrics(cfg.recovery_constraints.body_pairs)
 
         # Cache all model/asset metadata once. Zero assistance does not resolve force resources.
         self._assistance_force_z = 0.0
@@ -334,9 +353,18 @@ class G1RecoveryEnv(G1WalkEnv):
             cfg,
             self.cfg.commands.default_height,
         )
-        reward = np.zeros(self.num_envs, dtype=height.dtype)
+        constraints = getattr(self.cfg, "recovery_constraints", None)
+        constrained = constraints is not None and constraints.enabled
         log = {}
+        if constrained:
+            extra, log = constraint_reward_terms(
+                self._backend.get_recovery_load_metrics(), constraints, self.num_envs
+            )
+            terms.update(extra)
+        reward = np.zeros(self.num_envs, dtype=height.dtype)
         for name, scale in self._reward_cfg.scales.items():
+            if name in CONSTRAINT_TERMS and not constrained:
+                continue
             contribution = terms[name] * scale
             reward += contribution
             log[f"reward/{name}"] = float(np.mean(contribution))
